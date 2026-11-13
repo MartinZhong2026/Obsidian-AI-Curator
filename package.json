@@ -1,0 +1,42 @@
+{
+  "name": "ai-curator",
+  "version": "1.0.0-beta.1",
+  "description": "Save anything. Read what matters. AI reading triage and knowledge curation for Obsidian.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "package": "npm run build && npm test && node scripts/package.mjs",
+    "demo:install": "npm run build && node scripts/install-demo.mjs",
+    "demo:real": "node scripts/demo-real.ts"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "builtin-modules": "^5.5.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@mozilla/readability": "^0.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MartinZhong2026/Obsidian-AI-Curator.git"
+  },
+  "author": "Martin Zhong",
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "ai",
+    "reading",
+    "web-clipper",
+    "deepseek",
+    "knowledge-management"
+  ]
+}

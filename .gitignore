@@ -1,0 +1,13 @@
+node_modules/
+main.js
+dist/
+.local/
+.venv/
+__pycache__/
+*.pyc
+.env*
+data.json
+.DS_Store
+demo/vault/.obsidian/
+demo/vault/AI Curator/
+*.tmp

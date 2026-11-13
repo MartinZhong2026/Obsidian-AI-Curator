@@ -1,0 +1,10 @@
+{
+  "id": "ai-curator",
+  "name": "AI Curator",
+  "version": "1.0.0-beta.1",
+  "minAppVersion": "1.11.4",
+  "description": "Save anything. Read what matters. AI triages your clippings and bookmarks, tells you what's worth reading, and turns them into connected, actionable notes.",
+  "author": "Martin Zhong",
+  "authorUrl": "https://github.com/MartinZhong2026",
+  "isDesktopOnly": false
+}
