@@ -166,7 +166,7 @@ export class SetupModal extends Modal {
 
   private renderProvider(el: HTMLElement) {
     const p = preset(this.s.provider);
-    el.createEl('p', { text: 'AI Curator sends the text of each saved item to the AI provider you choose, and nothing else. DeepSeek is a good default: about $0.002 per article.' });
+    el.createEl('p', { text: 'AI Curator sends each saved item and its metadata, your optional profile, and existing topic and tag names to the AI provider you choose. DeepSeek is a good default: about $0.002 per article.' });
     new Setting(el).setName('Provider').addDropdown((d) => {
       for (const option of PRESETS) d.addOption(option.id, option.name);
       d.setValue(this.s.provider).onChange(async (v) => {
