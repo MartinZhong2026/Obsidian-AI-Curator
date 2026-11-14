@@ -1,6 +1,7 @@
 // Developer tool: run the real curation engine on the demo vault with a real provider.
 //   DEEPSEEK_API_KEY=... node scripts/demo-real.ts [--fresh]
-// Spending is hard-capped below. The key is read from the environment and never printed.
+// A small estimated budget is set below; provider billing remains authoritative.
+// The key is read from the environment and never printed.
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,6 +74,11 @@ await finished;
 mkdirSync(dirname(indexPath), { recursive: true });
 writeFileSync(indexPath, JSON.stringify(curator.index, null, 2));
 const u = curator.usage();
+const failed = curator.items().filter((i) => i.state === 'error' || i.state === 'pending' || i.error);
+if (failed.length || !u.items) {
+  console.error('Demo verification failed: some items did not complete successfully.');
+  process.exitCode = 1;
+}
 for (const i of curator.items().sort((a, b) => (b.analysis?.score ?? -1) - (a.analysis?.score ?? -1))) {
   const a = i.analysis;
   console.log(a ? `${a.verdict.padEnd(9)} ${String(a.score).padStart(3)}  ${a.title}  [${a.topic}]` : `${i.state.padEnd(9)}      ${i.title} ${i.skipReason ?? i.error ?? ''}`);

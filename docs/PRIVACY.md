@@ -11,7 +11,7 @@ AI Curator runs entirely inside Obsidian. It has no server, no account, no analy
 
 - New files inside the output folder only: curated notes, digests, and `Reading list.base`.
 - When you click **Mark read** or **Archive**, the `status:` property of the *curated* note changes.
-- The plugin's own data in `.obsidian/plugins/ai-curator/`: `data.json` holds your settings (never the API key), and `index.json` holds item states and analysis results (never the original note text).
+- The plugin's own data in `.obsidian/plugins/ai-curator/`: `data.json` holds your settings (never the API key), and `index.json` holds item states and analysis results (never the original note text). Temporary `.tmp` and previous `.bak` snapshots may contain the same metadata and analyses for recovery.
 - **Your original notes are never modified, renamed or deleted.** The automated tests check this.
 
 ## Network requests
@@ -24,11 +24,13 @@ AI Curator runs entirely inside Obsidian. It has no server, no account, no analy
 | A saved X post is cut off and **Expand X posts** is on (off by default) | `api.fxtwitter.com` (third party) | The post's ID and username |
 | You click **Star on GitHub** / **Report an issue** | Your browser opens github.com | Nothing from the plugin |
 
+Original sites and providers also receive ordinary request information, such as your IP address. For fully offline operation, use a local model and disable both web-recovery options. Remote AI endpoints require HTTPS; HTTP is allowed only on loopback.
+
 No other requests are made. Requests go through Obsidian's built-in `requestUrl`.
 
 ## API keys
 
-Keys live in Obsidian's **SecretStorage**, which uses the operating system's secure storage where it is available. The plugin settings store only the secret's *name*. Keys never appear in `data.json`, `index.json`, your notes or error messages. If an old version left a raw `apiKey` field in settings, it is removed when the settings load.
+Keys live in Obsidian's **SecretStorage**, which uses the operating system's secure storage where it is available. The plugin settings store only the secret's *name*. The plugin does not write keys to `data.json`, `index.json` or notes. Provider errors redact the configured key before display or persistence. If an old version left a raw `apiKey` field in settings, it is removed when the settings load.
 
 ## Prompt-injection hardening
 
@@ -37,3 +39,17 @@ Saved web content is untrusted. The system prompt tells the model to treat the c
 ## Deleting everything
 
 Disable the plugin and delete `.obsidian/plugins/ai-curator/` and the `AI Curator/` folder. Remove the secret under *Settings → About → Secrets* (or wherever your Obsidian version lists SecretStorage entries).
+
+## 中文说明
+
+仅读取所选文件夹与手动指定的 Markdown，不修改原文。整理结果写入输出目录；队列、元数据和分析结果保存在插件目录，临时与备份索引也可能含这些信息。请像保护仓库本身一样保护和备份这些文件。
+
+分析时，所选 AI 服务收到笔记正文、标题、URL、作者、日期、可选个人简介与已有主题/标签名。测试连接和加载模型也会访问该服务。正文补全默认开启，会请求原始网站；X 补全默认关闭，开启后由第三方 FxTwitter 接收帖子标识。网站或服务也会接触正常网络请求信息，例如 IP 地址。
+
+密钥通过 Obsidian SecretStorage 保存，设置仅存密钥名称，服务商错误在显示或保存前脱敏。无遥测、无分析统计、无项目账户。点击 GitHub 链接只会打开浏览器。
+
+完全离线使用需本地模型，并同时关闭网页正文补全与 X 补全。远程 AI 接口要求 HTTPS，仅回环地址允许 HTTP。
+
+收藏内容是不可信数据。提示词与结构校验可减少指令注入风险，但不能保证模型判断正确。插件不执行模型生成的操作。
+
+卸载时停用插件并删除插件目录和输出目录；另行移除 SecretStorage 中对应密钥。原始笔记保持不变。

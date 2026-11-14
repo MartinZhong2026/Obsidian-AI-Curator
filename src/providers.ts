@@ -113,15 +113,15 @@ function errorMessage(status: number, body: string): string {
   } catch {
     detail = body;
   }
-  detail = String(detail).replace(/\s+/g, ' ').slice(0, 220);
+  detail = String(detail).replace(/\s+/g, ' ');
   return `HTTP ${status}${detail ? ': ' + detail : ''}`;
 }
 
-function assertSafeEndpoint(baseUrl: string, local: boolean) {
+function assertSafeEndpoint(baseUrl: string) {
   let url: URL;
   try { url = new URL(baseUrl); } catch { throw new ProviderError('The API address is not a valid URL.', 400); }
   const loopback = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(url.hostname);
-  if (url.protocol !== 'https:' && !loopback && !local) {
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
     throw new ProviderError('For safety, remote API addresses must use https://.', 400);
   }
   if (url.username || url.password) throw new ProviderError('Do not put credentials in the API address.', 400);
@@ -131,7 +131,7 @@ function trimSlash(url: string) { return url.replace(/\/+$/, ''); }
 
 async function openaiChat(cfg: ProviderConfig, req: ChatRequest, t: Transport): Promise<ChatResult> {
   const p = preset(cfg.provider);
-  assertSafeEndpoint(cfg.baseUrl, !!p.local);
+  assertSafeEndpoint(cfg.baseUrl);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cfg.apiKey) headers.Authorization = 'Bearer ' + cfg.apiKey;
   const body: Record<string, unknown> = {
@@ -169,12 +169,12 @@ async function openaiChat(cfg: ProviderConfig, req: ChatRequest, t: Transport): 
 const CLAUDE_FALLBACK_MODELS = /^claude-(opus-5-5|sonnet-5-5|fable-5)/;
 
 function anthropicClient(cfg: ProviderConfig, t: Transport) {
-  assertSafeEndpoint(cfg.baseUrl || 'https://api.anthropic.com', false);
+  assertSafeEndpoint(cfg.baseUrl || 'https://api.anthropic.com');
   return new Anthropic({
     apiKey: cfg.apiKey,
     baseURL: trimSlash(cfg.baseUrl || 'https://api.anthropic.com'),
     fetch: t.fetch as any,
-    // Requests go through Obsidian's own network layer, not a web page; the key never leaves this device except to Anthropic.
+    // Requests use Obsidian's native network layer and the configured API endpoint.
     dangerouslyAllowBrowser: true,
     maxRetries: 0,
     timeout: cfg.timeoutMs ?? 180_000,
@@ -185,7 +185,7 @@ async function anthropicChat(cfg: ProviderConfig, req: ChatRequest, t: Transport
   const client = anthropicClient(cfg, t);
   const params: any = {
     model: cfg.model,
-    max_tokens: Math.max(req.maxTokens, 16000),
+    max_tokens: req.maxTokens,
     system: req.system,
     messages: [{ role: 'user', content: req.user }],
     output_config: { effort: 'low', ...(req.schema ? { format: { type: 'json_schema', schema: req.schema } } : {}) },
@@ -210,20 +210,38 @@ async function anthropicChat(cfg: ProviderConfig, req: ChatRequest, t: Transport
     if (error instanceof Anthropic.APIError) {
       const status = typeof error.status === 'number' ? error.status : 0;
       const msg = (error as any).error?.error?.message || error.message;
-      throw new ProviderError(`HTTP ${status || 'error'}: ${String(msg).slice(0, 220)}`, status);
+      throw new ProviderError(`HTTP ${status || 'error'}: ${String(msg)}`, status);
     }
     throw new ProviderError(error instanceof Error ? error.message : String(error), 0);
   }
+}
+
+function safeError(error: unknown, key: string): ProviderError {
+  let message = error instanceof Error ? error.message : String(error);
+  if (key) {
+    for (const secret of new Set([key, encodeURIComponent(key), JSON.stringify(key).slice(1, -1)])) {
+      message = message.split(secret).join('[redacted]');
+    }
+  }
+  return new ProviderError(message.replace(/\s+/g, ' ').slice(0, 300),
+    error instanceof ProviderError ? error.status : error instanceof Anthropic.APIError ? error.status ?? 0 : 0);
 }
 
 export async function chat(cfg: ProviderConfig, req: ChatRequest, t: Transport): Promise<ChatResult> {
   if (!cfg.model) throw new ProviderError('Choose a model in AI Curator settings.', 400);
   const p = preset(cfg.provider);
   if (p.needsKey && !cfg.apiKey) throw new ProviderError('Add your API key in AI Curator settings.', 401);
-  return p.kind === 'anthropic' ? anthropicChat(cfg, req, t) : openaiChat(cfg, req, t);
+  try {
+    return await (p.kind === 'anthropic' ? anthropicChat(cfg, req, t) : openaiChat(cfg, req, t));
+  } catch (error) { throw safeError(error, cfg.apiKey); }
 }
 
 export async function listModels(cfg: ProviderConfig, t: Transport): Promise<string[]> {
+  try { return await fetchModels(cfg, t); }
+  catch (error) { throw safeError(error, cfg.apiKey); }
+}
+
+async function fetchModels(cfg: ProviderConfig, t: Transport): Promise<string[]> {
   const p = preset(cfg.provider);
   if (p.kind === 'anthropic') {
     const client = anthropicClient(cfg, t);
@@ -231,7 +249,7 @@ export async function listModels(cfg: ProviderConfig, t: Transport): Promise<str
     for await (const model of client.models.list({ limit: 100 } as any)) ids.push(model.id);
     return ids;
   }
-  assertSafeEndpoint(cfg.baseUrl, !!p.local);
+  assertSafeEndpoint(cfg.baseUrl);
   const headers: Record<string, string> = {};
   if (cfg.apiKey) headers.Authorization = 'Bearer ' + cfg.apiKey;
   const res = await t.http({ url: trimSlash(cfg.baseUrl) + '/models', method: 'GET', headers });

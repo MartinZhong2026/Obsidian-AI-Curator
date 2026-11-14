@@ -9,7 +9,7 @@ import { recoverFullText, type HtmlParser } from './fulltext.ts';
 import { isCuratedNote, readStatus, relatedItems, renderBase, renderDigest, renderNote, safeFileName } from './notes.ts';
 import { PRICES, ProviderError, chat, estimateCost, preset, type ChatResult, type Transport } from './providers.ts';
 import {
-  MAX_ATTEMPTS, backoffMs, budgetCheck, counts, emptyIndex, estimateItemCost, readyItems, recordUsage, rollUsage,
+  MAX_ATTEMPTS, OUTPUT_TOKENS, backoffMs, budgetCheck, counts, emptyIndex, estimateItemCost, readyItems, recordUsage, rollUsage,
 } from './queue.ts';
 import { type CuratorSettings, isInFolder } from './settings.ts';
 
@@ -57,7 +57,11 @@ export class Curator {
   index: IndexData;
   state: EngineState = { kind: 'idle' };
   private running = new Set<string>();
-  /** Estimated cost of calls in flight, so parallel workers cannot jointly overshoot the budget. */
+  private active = new Map<Item, Promise<void>>();
+  private claimedPaths = new Set<string>();
+  private noteWrites = new Map<Item, Promise<void>>();
+  private blockedCosts = new Map<Item, number>();
+  /** Reserved output allowance for calls in flight, reducing parallel budget overspending. */
   private reserved = 0;
   private inflight = 0;
   private pumping = false;
@@ -167,10 +171,9 @@ export class Curator {
   }
 
   onDelete(path: string) {
-    if (this.index.items[path]) {
-      delete this.index.items[path];
-    } else {
-      for (const item of this.items()) if (item.notePath === path) item.notePath = undefined;
+    for (const item of this.items()) {
+      if (isInFolder(item.path, path)) delete this.index.items[item.path];
+      if (item.notePath && isInFolder(item.notePath, path)) item.notePath = undefined;
     }
     this.deps.persist();
     this.deps.changed();
@@ -192,6 +195,24 @@ export class Curator {
     this.deps.persist();
     this.deps.changed();
     this.kick();
+  }
+
+  /** Obsidian emits one event for a folder rename, not one event per child. */
+  onRenameFolder(oldPath: string, newPath: string) {
+    const move = (path: string) => isInFolder(path, oldPath) ? newPath + path.slice(oldPath.length) : path;
+    for (const item of this.items()) {
+      const next = move(item.path);
+      if (next !== item.path) {
+        delete this.index.items[item.path];
+        item.path = next;
+        this.index.items[next] = item;
+      }
+      if (item.notePath) item.notePath = move(item.notePath);
+      if (item.dedupeOf) item.dedupeOf = move(item.dedupeOf);
+    }
+    this.index.seededFolders = this.index.seededFolders.map(move);
+    this.deps.persist();
+    this.deps.changed();
   }
 
   // ───────────────────────────── user actions ─────────────────────────────
@@ -278,7 +299,7 @@ export class Curator {
 
   private setupProblem(): EngineState | null {
     const s = this.s;
-    if (!s.sources.length) return { kind: 'needs-setup', reason: 'sources' };
+    if (!s.sources.length && !this.items().some((i) => i.manual)) return { kind: 'needs-setup', reason: 'sources' };
     const ps = s.providers[s.provider];
     if (!ps?.model) return { kind: 'needs-setup', reason: 'model' };
     if (preset(s.provider).needsKey && !this.deps.apiKey()) return { kind: 'needs-setup', reason: 'key' };
@@ -293,7 +314,8 @@ export class Curator {
     if (s.paused) this.state = { kind: 'paused', reason: s.pauseReason };
     else if (problem) this.state = problem;
     else {
-      const block = budgetCheck(this.index.usage, this.now(), s, null);
+      const pendingCosts = [...this.blockedCosts].filter(([i]) => this.get(i.path) === i && i.state === 'pending' && !i.held).map(([, cost]) => cost);
+      const block = budgetCheck(this.index.usage, this.now(), s, pendingCosts.length ? Math.min(...pendingCosts) : null);
       this.state = block.blocked ? { kind: 'limit', reason: block.reason } : { kind: 'idle' };
     }
   }
@@ -302,7 +324,7 @@ export class Curator {
   kick(manual = false) {
     if (this.stopped) return;
     if (!this.s.autoProcess && !manual) { this.refreshState(); this.deps.changed(); return; }
-    void this.pump();
+    void this.pump().catch(() => this.deps.notify('AI Curator could not finish the queue. Retry from the reading inbox.'));
   }
 
   private async pump() {
@@ -334,11 +356,17 @@ export class Curator {
       await this.checkChanged();
       const item = this.nextItem();
       if (!item) return;
-      this.running.add(item.path);
+      const runningPath = item.path;
+      this.running.add(runningPath);
       try {
-        await this.process(item);
+        const work = this.process(item);
+        this.active.set(item, work);
+        await work;
+      } catch (error) {
+        if (this.get(item.path) === item) this.handleFailure(item, error);
       } finally {
-        this.running.delete(item.path);
+        this.active.delete(item);
+        this.running.delete(runningPath);
       }
       if (this.state.kind === 'limit' || this.s.paused) return;
     }
@@ -382,7 +410,7 @@ export class Curator {
 
   private findDuplicate(item: Item): Item | undefined {
     for (const other of this.items()) {
-      if (other.path === item.path || other.state !== 'done' || !other.analysis) continue;
+      if (other === item || !((other.state === 'done' && other.analysis) || (other.state === 'analyzing' && this.active.has(other)))) continue;
       const same = (item.canonical && other.canonical === item.canonical) || (item.chars > 200 && other.hash === item.hash);
       if (same && other.chars >= item.chars * 0.8) return other;
     }
@@ -426,7 +454,11 @@ export class Curator {
     });
 
     if (!force) {
-      const dup = this.findDuplicate(item);
+      let dup = this.findDuplicate(item);
+      if (dup && this.active.has(dup)) {
+        await this.active.get(dup);
+        dup = this.findDuplicate(item);
+      }
       if (dup) {
         Object.assign(item, { state: 'skipped', skipReason: 'duplicate', dedupeOf: dup.path, error: undefined });
         this.deps.persist();
@@ -434,6 +466,10 @@ export class Curator {
       }
     }
 
+    if (this.stopped || this.s.paused || this.get(item.path) !== item) {
+      item.state = 'pending';
+      return;
+    }
     let text = clean;
     item.fullTextFrom = undefined;
     if (assessment.thin && meta.links.length && (s.fetchFullText || s.expandX)) {
@@ -465,13 +501,20 @@ export class Curator {
 
     const price = this.price();
     const nextCost = estimateItemCost(estimateTokens(system + user), price);
+    if (this.stopped || this.s.paused || this.get(item.path) !== item) {
+      item.state = 'pending';
+      return;
+    }
+    this.index.usage = rollUsage(this.index.usage, this.now());
     const usage = this.index.usage;
-    const block = budgetCheck({ ...rollUsage(usage, this.now()), cost: usage.cost + this.reserved, dayItems: rollUsage(usage, this.now()).dayItems + this.inflight }, this.now(), s, nextCost);
+    const block = budgetCheck({ ...usage, cost: usage.cost + this.reserved, dayItems: usage.dayItems + this.inflight }, this.now(), s, nextCost);
     if (block.blocked) {
       item.state = 'pending';
       this.state = { kind: 'limit', reason: block.reason };
+      if (nextCost !== null) this.blockedCosts.set(item, nextCost);
       return;
     }
+    this.blockedCosts.delete(item);
 
     const ps = s.providers[s.provider];
     let result: ChatResult;
@@ -481,7 +524,7 @@ export class Curator {
     try {
       result = await chat(
         { provider: s.provider, baseUrl: ps.baseUrl, model: ps.model, apiKey: this.deps.apiKey() },
-        { system, user, schema: ANALYSIS_SCHEMA, maxTokens: 4000 },
+        { system, user, schema: ANALYSIS_SCHEMA, maxTokens: OUTPUT_TOKENS },
         this.deps.transport,
       );
     } catch (error) {
@@ -496,6 +539,8 @@ export class Curator {
     this.index.usage = recordUsage(this.index.usage, this.now(), result.inputTokens, result.outputTokens, cost);
     item.tokens = { input: result.inputTokens, output: result.outputTokens };
     item.cost = cost ?? undefined;
+    this.deps.persist();
+    if (this.stopped || this.get(item.path) !== item) return;
 
     try {
       item.analysis = parseAnalysis(result.text);
@@ -559,23 +604,35 @@ export class Curator {
     for (let n = 1; n < 1000; n++) {
       const path = `${folder}/${base}${n > 1 ? ` (${n})` : ''}.md`;
       if (taken.has(path)) continue;
-      if (!vault.stat(path)) return path;
+      if (!vault.stat(path) && !this.claimedPaths.has(path)) { this.claimedPaths.add(path); return path; }
     }
-    return `${folder}/${base} ${this.now()}.md`;
+    throw new Error('Could not allocate a unique curated-note filename.');
   }
 
   async writeNote(item: Item, lang: OutputLanguage) {
+    const previous = this.noteWrites.get(item) ?? Promise.resolve();
+    const work = previous.catch(() => {}).then(() => this.writeNoteOnce(item, lang));
+    this.noteWrites.set(item, work);
+    try { await work; }
+    finally { if (this.noteWrites.get(item) === work) this.noteWrites.delete(item); }
+  }
+
+  private async writeNoteOnce(item: Item, lang: OutputLanguage) {
     if (!item.analysis) return;
     const vault = this.deps.vault;
     const path = await this.choosePath(item);
-    const existing = vault.stat(path) ? await vault.read(path) : null;
-    const status = (readStatus(existing) as ReadingStatus | undefined) ?? item.status ?? 'unread';
-    const related = relatedItems(item, this.items()).map((r) => ({ path: r.notePath!, title: r.analysis!.title }));
-    const content = renderNote({ item, analysis: item.analysis, lang, related, analyzedAt: item.analyzedAt ?? this.now(), model: item.model ?? '' }, existing, status);
-    await vault.write(path, content);
-    item.notePath = path;
-    item.status = status as ReadingStatus;
-    await this.ensureBase();
+    try {
+      const existing = vault.stat(path) ? await vault.read(path) : null;
+      const status = (readStatus(existing) as ReadingStatus | undefined) ?? item.status ?? 'unread';
+      const related = relatedItems(item, this.items()).map((r) => ({ path: r.notePath!, title: r.analysis!.title }));
+      const content = renderNote({ item, analysis: item.analysis, lang, related, analyzedAt: item.analyzedAt ?? this.now(), model: item.model ?? '' }, existing, status);
+      await vault.write(path, content);
+      item.notePath = path;
+      item.status = status as ReadingStatus;
+      await this.ensureBase();
+    } finally {
+      this.claimedPaths.delete(path);
+    }
   }
 
   /** Rewrite every curated note's generated part (related links, headings). Free: no AI calls. */

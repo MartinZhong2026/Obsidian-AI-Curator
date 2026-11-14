@@ -1,6 +1,6 @@
 {
   "name": "ai-curator",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0",
   "description": "Save anything. Read what matters. AI reading triage and knowledge curation for Obsidian.",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && node esbuild.config.mjs production",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
-    "package": "npm run build && npm test && node scripts/package.mjs",
+    "package": "npm run build && npm test && node scripts/package.mjs && node scripts/verify-package.mjs",
     "demo:install": "npm run build && node scripts/install-demo.mjs",
     "demo:real": "node scripts/demo-real.ts"
   },
@@ -38,5 +38,8 @@
     "web-clipper",
     "deepseek",
     "knowledge-management"
-  ]
+  ],
+  "engines": {
+    "node": ">=24"
+  }
 }

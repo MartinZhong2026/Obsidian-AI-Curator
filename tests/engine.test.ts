@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { analysisJson, deepseekReply, harness } from './helpers.ts';
 import { MARKER } from '../src/notes.ts';
+import { emptyUsage } from '../src/queue.ts';
 
 const ARTICLE = (title: string, url: string, body = 'Retrieval quality decides answer quality. '.repeat(30)) => `---
 title: "${title}"
@@ -272,4 +273,129 @@ test('digest is written to the output folder', async () => {
   const path = await h.curator.writeDigest(7);
   assert.match(path, /^AI Curator\/Digests\/2026-11-13\.md$/);
   assert.match(h.vault.files.get(path)!.content, /Read next/);
+});
+
+test('parallel items with the same generated title receive distinct notes', async () => {
+  const h = harness(async () => { await new Promise((r) => setTimeout(r, 5)); return deepseekReply(analysisJson()); }, { settings: { settleSeconds: 0 } });
+  const write = h.vault.write.bind(h.vault);
+  h.vault.write = async (path, content) => { await new Promise((r) => setTimeout(r, 5)); await write(path, content); };
+  for (const n of [1, 2]) h.vault.add('Clippings/' + n + '.md', ARTICLE('Item ' + n, 'https://example.com/' + n, ('Distinct article ' + n + '. ').repeat(60)));
+  h.curator.scan();
+  h.curator.releaseBacklog();
+  await h.idle();
+  const items = h.curator.items();
+  assert.equal(items.filter((i) => i.state === 'done').length, 2);
+  assert.notEqual(items[0].notePath, items[1].notePath);
+  for (const item of items) assert.ok(h.vault.files.get(item.notePath!)!.content.includes(item.path.replace(/\.md$/, '')));
+});
+
+test('parallel duplicate saves share a single paid analysis', async () => {
+  const h = harness(async () => { await new Promise((r) => setTimeout(r, 5)); return deepseekReply(analysisJson()); }, { settings: { settleSeconds: 0 } });
+  for (const n of [1, 2]) h.vault.add('Clippings/' + n + '.md', ARTICLE('Same', 'https://example.com/same'));
+  h.curator.scan();
+  h.curator.releaseBacklog();
+  await h.idle();
+  assert.equal(h.transport.calls.length, 1);
+  assert.equal(h.curator.items().filter((i) => i.skipReason === 'duplicate').length, 1);
+});
+
+test('a new month clears last month spending before reserving a call', async () => {
+  const h = harness(() => deepseekReply(analysisJson()), { settings: { settleSeconds: 0, monthlyBudget: 0.02 } });
+  h.curator.index.usage = { ...emptyUsage(h.clock.now), cost: 50 };
+  h.clock.now = Date.UTC(2026, 11, 13, 12);
+  h.curator.scan();
+  h.curator.onCreate(h.vault.add('Clippings/new-month.md', ARTICLE('New month', 'https://example.com/new-month')));
+  await h.idle();
+  assert.equal(h.transport.calls.length, 1);
+  assert.ok(h.curator.usage().cost < 0.02);
+});
+
+test('parallel calls reserve the full output allowance before spending', async () => {
+  const h = harness(async () => { await new Promise((r) => setTimeout(r, 5)); return deepseekReply(analysisJson(), { prompt_tokens: 2000, completion_tokens: 4000 }); }, { settings: { settleSeconds: 0, monthlyBudget: 0.009 } });
+  for (const n of [1, 2]) h.vault.add('Clippings/' + n + '.md', ARTICLE('Item ' + n, 'https://example.com/' + n, ('Budget article ' + n + '. ').repeat(60)));
+  h.curator.scan();
+  h.curator.releaseBacklog();
+  await h.idle();
+  assert.equal(h.transport.calls.length, 1);
+  assert.ok(h.curator.usage().cost <= h.settings.monthlyBudget);
+  assert.deepEqual(h.curator.state, { kind: 'limit', reason: 'monthly' });
+});
+
+test('a pending item that exceeds the remaining budget keeps the limit visible', async () => {
+  const h = harness(() => deepseekReply(analysisJson()), { settings: { settleSeconds: 0, monthlyBudget: 0.0001 } });
+  h.curator.scan();
+  h.curator.onCreate(h.vault.add('Clippings/a.md', ARTICLE('A', 'https://example.com/a')));
+  await h.idle();
+  assert.equal(h.transport.calls.length, 0);
+  assert.deepEqual(h.curator.state, { kind: 'limit', reason: 'monthly' });
+  h.settings.monthlyBudget = 1;
+  h.curator.kick();
+  await h.idle();
+  assert.equal(h.curator.get('Clippings/a.md')!.state, 'done');
+});
+
+test('explicit single-note curation works without watched folders', async () => {
+  const h = harness(() => deepseekReply(analysisJson()), { settings: { sources: [], settleSeconds: 0 } });
+  const file = h.vault.add('Private/chosen.md', ARTICLE('Chosen', 'https://example.com/chosen'));
+  h.curator.addManual(file);
+  await h.idle();
+  assert.equal(h.curator.get(file.path)!.state, 'done');
+});
+
+test('pausing during full-text recovery prevents a new AI request', async () => {
+  let fetched!: () => void;
+  const fetching = new Promise<void>((resolve) => { fetched = resolve; });
+  let finish!: (response: { status: number; text: string }) => void;
+  const h = harness((req) => {
+    if (req.method === 'GET') { fetched(); return new Promise((resolve) => { finish = resolve; }); }
+    return deepseekReply(analysisJson());
+  }, { settings: { settleSeconds: 0 } });
+  h.curator.scan();
+  h.curator.onCreate(h.vault.add('Clippings/teaser.md', ARTICLE('Teaser', 'https://example.com/teaser', 'A brief teaser for the full article.')));
+  await fetching;
+  h.settings.paused = true;
+  finish({ status: 200, text: '<article><p>' + 'Recovered article. '.repeat(70) + '</p></article>' });
+  await h.idle();
+  assert.equal(h.transport.calls.filter((r) => r.method === 'POST').length, 0);
+  assert.equal(h.curator.get('Clippings/teaser.md')!.state, 'pending');
+});
+
+test('deleting a source folder removes its descendants from the inbox', async () => {
+  const h = harness(() => deepseekReply(analysisJson()));
+  h.vault.add('Clippings/sub/a.md', ARTICLE('A', 'https://example.com/a'));
+  h.curator.scan();
+  h.curator.onDelete('Clippings/sub');
+  assert.equal(h.curator.items().length, 0);
+});
+
+test('renaming a folder preserves descendants and curated-note locations', async () => {
+  const h = harness(() => deepseekReply(analysisJson()));
+  h.vault.add('Clippings/sub/a.md', ARTICLE('A', 'https://example.com/a'));
+  h.curator.scan();
+  const item = h.curator.get('Clippings/sub/a.md')!;
+  item.notePath = 'AI Curator/Notes/a.md';
+  h.curator.onRenameFolder('Clippings', 'Reading');
+  assert.equal(h.curator.get('Clippings/sub/a.md'), undefined);
+  assert.equal(h.curator.get('Reading/sub/a.md'), item);
+  assert.deepEqual(h.curator.index.seededFolders, ['Reading']);
+  h.curator.onRenameFolder('AI Curator', 'Curated');
+  assert.equal(item.notePath, 'Curated/Notes/a.md');
+});
+
+test('deleting a source during a paid call records usage without creating an orphan note', async () => {
+  let started!: () => void, finish!: () => void;
+  const requested = new Promise<void>((r) => { started = r; });
+  const h = harness(async () => {
+    started(); await new Promise<void>((r) => { finish = r; });
+    return deepseekReply(analysisJson());
+  }, { settings: { settleSeconds: 0 } });
+  h.curator.scan();
+  h.curator.onCreate(h.vault.add('Clippings/a.md', ARTICLE('A', 'https://example.com/a')));
+  await requested;
+  h.curator.onDelete('Clippings/a.md');
+  finish();
+  await h.idle();
+  assert.equal(h.curator.usage().items, 1);
+  assert.equal(h.curator.items().length, 0);
+  assert.equal(h.vault.writes.length, 0);
 });

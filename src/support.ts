@@ -1,4 +1,4 @@
-// GitHub star invitation and About card. No tracking, no account access: the user decides.
+import { translate } from './i18n.ts';
 import { Notice, setIcon } from 'obsidian';
 
 export const REPO_URL = 'https://github.com/MartinZhong2026/Obsidian-AI-Curator';
@@ -14,15 +14,15 @@ export function showStarInvite(title: string, onClose: (starred: boolean) => voi
   const box = fragment.createDiv({ cls: 'ai-curator-invite' });
   const head = box.createDiv({ cls: 'ai-curator-invite-head' });
   setIcon(head.createSpan({ cls: 'ai-curator-invite-icon' }), 'sparkles');
-  head.createSpan({ text: 'Your first item is curated' });
-  box.createEl('p', { text: `“${title.slice(0, 80)}” is ready in your reading inbox.` });
+  head.createSpan({ text: translate("Your first item is curated") });
+  box.createEl('p', { text: translate("“{0}” is ready in your reading inbox.", title.slice(0, 80)) });
   box.createEl('p', {
     cls: 'ai-curator-muted',
-    text: 'AI Curator is free and open source. If it saves you time, a GitHub star helps other readers find it.',
+    text: translate("AI Curator is free and open source. If it saves you time, a GitHub star helps other readers find it."),
   });
   const actions = box.createDiv({ cls: 'ai-curator-actions' });
-  const star = actions.createEl('button', { cls: 'mod-cta', text: 'Star on GitHub' });
-  const later = actions.createEl('button', { text: 'No thanks' });
+  const star = actions.createEl('button', { cls: 'mod-cta', text: translate("Star on GitHub") });
+  const later = actions.createEl('button', { text: translate("No thanks") });
   const notice = new Notice(fragment, 0);
   let done = false;
   const close = (starred: boolean) => {
@@ -39,11 +39,11 @@ export function renderSupportCard(container: HTMLElement) {
   const card = container.createDiv({ cls: 'ai-curator-support' });
   setIcon(card.createDiv({ cls: 'ai-curator-support-icon' }), 'star');
   const content = card.createDiv({ cls: 'ai-curator-support-content' });
-  content.createEl('strong', { text: 'Enjoying AI Curator?' });
+  content.createEl('strong', { text: translate("Enjoying AI Curator?") });
   content.createEl('p', {
-    text: 'It is built in the open. Stars, bug reports and ideas all help. Starring happens on GitHub; the plugin never touches your GitHub account.',
+    text: translate("It is built in the open. Stars, bug reports and ideas all help. Starring happens on GitHub; the plugin never touches your GitHub account."),
   });
   const actions = content.createDiv({ cls: 'ai-curator-actions' });
-  actions.createEl('button', { cls: 'mod-cta', text: 'Star on GitHub' }).addEventListener('click', () => openExternal(REPO_URL));
-  actions.createEl('button', { text: 'Report an issue' }).addEventListener('click', () => openExternal(ISSUES_URL));
+  actions.createEl('button', { cls: 'mod-cta', text: translate("Star on GitHub") }).addEventListener('click', () => openExternal(REPO_URL));
+  actions.createEl('button', { text: translate("Report an issue") }).addEventListener('click', () => openExternal(ISSUES_URL));
 }

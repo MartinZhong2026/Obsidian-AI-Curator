@@ -1,14 +1,16 @@
-import { Notice, Plugin, TFile, type TAbstractFile, getLanguage, normalizePath } from 'obsidian';
+import { translate, setUiLanguage } from './i18n.ts';
+import { Notice, Plugin, TFile, TFolder, type TAbstractFile, getLanguage, normalizePath } from 'obsidian';
 import { Curator } from './curator.ts';
 import type { OutputLanguage } from './analysis.ts';
 import { ObsidianVault, parseHtml, transport, vaultFile } from './platform.ts';
 import { chat, listModels, preset } from './providers.ts';
-import { type CuratorSettings, type ProviderSettings, migrateSettings } from './settings.ts';
+import { type CuratorSettings, type ProviderSettings, isInFolder, migrateSettings } from './settings.ts';
 import { CuratorSettingTab } from './settings-tab.ts';
 import { showStarInvite } from './support.ts';
 import { CuratorView, VIEW_TYPE } from './view.ts';
 import { SetupModal } from './onboarding.ts';
 import type { IndexData } from './types.ts';
+import { IndexStore } from './index-store.ts';
 
 const INDEX_FILE = 'index.json';
 
@@ -17,11 +19,14 @@ export default class AICuratorPlugin extends Plugin {
   curator!: Curator;
   private statusEl!: HTMLElement;
   private saveIndexTimer: number | null = null;
+  private indexStore!: IndexStore;
   private listeners = new Set<() => void>();
 
   async onload() {
     this.settings = migrateSettings(await this.loadData());
+    this.configureLanguage();
     const vault = new ObsidianVault(this.app);
+    this.indexStore = new IndexStore(this.app.vault.adapter, normalizePath(this.manifest.dir + '/' + INDEX_FILE));
     this.curator = new Curator({
       vault,
       transport,
@@ -38,7 +43,7 @@ export default class AICuratorPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE, (leaf) => new CuratorView(leaf, this));
     this.addSettingTab(new CuratorSettingTab(this.app, this));
-    this.addRibbonIcon('sparkles', 'AI Curator: reading inbox', () => { void this.activateView(); });
+    this.addRibbonIcon('sparkles', translate("AI Curator: reading inbox"), () => { void this.activateView(); });
     this.statusEl = this.addStatusBarItem();
     this.statusEl.addClass('mod-clickable', 'ai-curator-status');
     this.statusEl.addEventListener('click', () => { void this.activateView(); });
@@ -53,7 +58,16 @@ export default class AICuratorPlugin extends Plugin {
       })));
       this.registerEvent(this.app.vault.on('modify', (f) => this.withFile(f, (file) => this.curator.onModify(vaultFile(file)))));
       this.registerEvent(this.app.vault.on('delete', (f) => this.curator.onDelete(f.path)));
-      this.registerEvent(this.app.vault.on('rename', (f, oldPath) => this.withFile(f, (file) => this.curator.onRename(vaultFile(file), oldPath))));
+      this.registerEvent(this.app.vault.on('rename', (f, oldPath) => {
+        if (f instanceof TFolder) {
+          const move = (path: string) => isInFolder(path, oldPath) ? f.path + path.slice(oldPath.length) : path;
+          this.settings.sources = this.settings.sources.map(move);
+          this.settings.outputFolder = move(this.settings.outputFolder);
+          this.curator.onRenameFolder(oldPath, f.path);
+          void this.saveSettings();
+          this.curator.kick();
+        } else this.withFile(f, (file) => this.curator.onRename(vaultFile(file), oldPath));
+      }));
       this.curator.scan();
       this.curator.kick();
       this.registerInterval(window.setInterval(() => this.curator.kick(), 60_000));
@@ -69,14 +83,10 @@ export default class AICuratorPlugin extends Plugin {
   // ───────────── persistence ─────────────
 
   private async loadIndex(): Promise<IndexData | null> {
-    try {
-      const path = normalizePath(`${this.manifest.dir}/${INDEX_FILE}`);
-      if (!(await this.app.vault.adapter.exists(path))) return null;
-      return JSON.parse(await this.app.vault.adapter.read(path)) as IndexData;
-    } catch (error) {
-      console.error('AI Curator: could not read the index, starting fresh.', error);
-      return null;
-    }
+    const result = await this.indexStore.load();
+    if (result.recovered) new Notice(translate("AI Curator recovered its index from a local backup."), 8000);
+    else if (result.damaged) new Notice(translate("AI Curator could not recover its index. Existing source notes and curated notes are safe; review the queue before processing."), 15000);
+    return result.data;
   }
 
   private scheduleIndexSave() {
@@ -87,25 +97,28 @@ export default class AICuratorPlugin extends Plugin {
   async flushIndex() {
     if (this.saveIndexTimer !== null) { window.clearTimeout(this.saveIndexTimer); this.saveIndexTimer = null; }
     if (!this.curator) return;
-    const path = normalizePath(`${this.manifest.dir}/${INDEX_FILE}`);
-    const tmp = path + '.tmp';
     try {
-      // Write-then-rename so a crash never leaves a half-written index.
-      await this.app.vault.adapter.write(tmp, JSON.stringify(this.curator.index));
-      if (await this.app.vault.adapter.exists(path)) await this.app.vault.adapter.remove(path);
-      await this.app.vault.adapter.rename(tmp, path);
+      await this.indexStore.save(this.curator.index);
     } catch (error) {
-      console.error('AI Curator: could not save the index.', error);
+      console.error(translate("AI Curator: could not save the index."), error);
+      new Notice(translate("AI Curator could not save its queue. Check disk space and vault permissions."), 10000);
     }
   }
 
   async saveSettings() {
+    this.configureLanguage();
     await this.saveData(this.settings);
     this.curator?.refreshState();
     this.emitChange();
   }
 
   // ───────────── change notifications ─────────────
+
+  private configureLanguage() {
+    let locale = 'en';
+    try { locale = getLanguage(); } catch { /* English fallback */ }
+    setUiLanguage(this.settings.uiLanguage === 'auto' ? locale : this.settings.uiLanguage);
+  }
 
   onChange(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -120,14 +133,14 @@ export default class AICuratorPlugin extends Plugin {
     const c = this.curator.counts();
     const st = this.curator.state;
     let text: string;
-    if (st.kind === 'working') text = `Curating… ${c.pending + c.analyzing} left`;
-    else if (st.kind === 'paused') text = 'Curator paused';
-    else if (st.kind === 'needs-setup') text = 'Curator: finish setup';
-    else if (st.kind === 'limit') text = st.reason === 'daily' ? 'Curator: daily limit' : 'Curator: budget reached';
-    else if (c.pending) text = `Curator: ${c.pending} queued`;
-    else text = c.unread ? `${c.unread} to read` : 'Curator ready';
+    if (st.kind === 'working') text = translate("Curating… {0} left", c.pending + c.analyzing);
+    else if (st.kind === 'paused') text = translate("Curator paused");
+    else if (st.kind === 'needs-setup') text = translate("Curator: finish setup");
+    else if (st.kind === 'limit') text = st.reason === 'daily' ? translate("Curator: daily limit") : translate("Curator: budget reached");
+    else if (c.pending) text = translate("Curator: {0} queued", c.pending);
+    else text = c.unread ? translate("{0} to read", c.unread) : translate("Curator ready");
     this.statusEl.setText('✦ ' + text);
-    this.statusEl.setAttribute('aria-label', 'Open AI Curator reading inbox');
+    this.statusEl.setAttribute('aria-label', translate("Open AI Curator reading inbox"));
   }
 
   // ───────────── helpers used by the UI ─────────────
@@ -161,14 +174,14 @@ export default class AICuratorPlugin extends Plugin {
   async testConnection(): Promise<{ ok: boolean; message: string }> {
     const ps = this.providerSettings();
     const p = preset(this.settings.provider);
-    if (p.needsKey && !this.apiKey()) return { ok: false, message: 'Add an API key first.' };
+    if (p.needsKey && !this.apiKey()) return { ok: false, message: translate("Add an API key first.") };
     try {
       const res = await chat(
         { provider: this.settings.provider, baseUrl: ps.baseUrl, model: ps.model, apiKey: this.apiKey(), timeoutMs: 60_000 },
         { system: 'Reply with the single word OK.', user: 'ping', maxTokens: 16 },
         transport,
       );
-      return { ok: true, message: `Connected to ${res.model}.` };
+      return { ok: true, message: translate("Connected to {0}.", res.model) };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     }
@@ -205,10 +218,10 @@ export default class AICuratorPlugin extends Plugin {
       showStarInvite(title, (starred) => {
         this.settings.starInvite = 'dismissed';
         void this.saveSettings();
-        if (!starred) new Notice('Got it. You can always find the GitHub link under Settings → AI Curator → About.', 6000);
+        if (!starred) new Notice(translate("Got it. You can always find the GitHub link under Settings → AI Curator → About."), 6000);
       });
     } else {
-      new Notice(`AI Curator: “${title}” is ready.`, 5000);
+      new Notice(translate("AI Curator: “{0}” is ready.", title), 5000);
     }
   }
 
@@ -221,25 +234,25 @@ export default class AICuratorPlugin extends Plugin {
   }
 
   private registerCommands() {
-    this.addCommand({ id: 'open-inbox', name: 'Open reading inbox', callback: () => { void this.activateView(); } });
-    this.addCommand({ id: 'process-now', name: 'Process queue now', callback: () => { this.curator.scan(); this.curator.kick(true); } });
+    this.addCommand({ id: 'open-inbox', name: translate("Open reading inbox"), callback: () => { void this.activateView(); } });
+    this.addCommand({ id: 'process-now', name: translate("Process queue now"), callback: () => { this.curator.scan(); this.curator.kick(true); } });
     this.addCommand({
-      id: 'toggle-pause', name: 'Pause or resume automatic curation',
-      callback: () => { void this.pause(!this.settings.paused).then(() => new Notice(this.settings.paused ? 'AI Curator paused.' : 'AI Curator resumed.')); },
+      id: 'toggle-pause', name: translate("Pause or resume automatic curation"),
+      callback: () => { void this.pause(!this.settings.paused).then(() => new Notice(this.settings.paused ? translate("AI Curator paused.") : translate("AI Curator resumed."))); },
     });
     this.addCommand({
-      id: 'curate-current', name: 'Curate the current note',
+      id: 'curate-current', name: translate("Curate the current note"),
       checkCallback: (checking) => {
         const file = this.app.workspace.getActiveFile();
         if (!file || file.extension !== 'md') return false;
         if (checking) return true;
-        if (this.curator.addManual(vaultFile(file))) new Notice(`Queued “${file.basename}” for curation.`);
-        else new Notice('This note is in the AI Curator output folder.');
+        if (this.curator.addManual(vaultFile(file))) new Notice(translate("Queued “{0}” for curation.", file.basename));
+        else new Notice(translate("This note is in the AI Curator output folder."));
         return true;
       },
     });
     this.addCommand({
-      id: 'write-digest', name: 'Create weekly reading digest',
+      id: 'write-digest', name: translate("Create weekly reading digest"),
       callback: async () => {
         const path = await this.curator.writeDigest(7);
         const file = this.app.vault.getAbstractFileByPath(path);
@@ -247,10 +260,10 @@ export default class AICuratorPlugin extends Plugin {
       },
     });
     this.addCommand({
-      id: 'refresh-notes', name: 'Refresh related links in curated notes (no AI calls)',
-      callback: async () => { const n = await this.curator.refreshNotes(); new Notice(`Refreshed ${n} curated notes.`); },
+      id: 'refresh-notes', name: translate("Refresh related links in curated notes (no AI calls)"),
+      callback: async () => { const n = await this.curator.refreshNotes(); new Notice(translate("Refreshed {0} curated notes.", n)); },
     });
-    this.addCommand({ id: 'retry-failed', name: 'Retry failed items', callback: () => this.curator.retryErrors() });
-    this.addCommand({ id: 'setup', name: 'Open setup guide', callback: () => new SetupModal(this.app, this).open() });
+    this.addCommand({ id: 'retry-failed', name: translate("Retry failed items"), callback: () => this.curator.retryErrors() });
+    this.addCommand({ id: 'setup', name: translate("Open setup guide"), callback: () => new SetupModal(this.app, this).open() });
   }
 }

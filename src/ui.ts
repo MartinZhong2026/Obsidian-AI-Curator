@@ -1,3 +1,4 @@
+import { translate } from './i18n.ts';
 import { AbstractInputSuggest, type App, TFolder } from 'obsidian';
 
 export class FolderSuggest extends AbstractInputSuggest<TFolder> {
@@ -25,6 +26,6 @@ export class FolderSuggest extends AbstractInputSuggest<TFolder> {
 }
 
 export function money(value: number | null | undefined): string {
-  if (value == null) return 'unknown';
+  if (value == null) return translate("unknown");
   return value < 0.01 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
 }

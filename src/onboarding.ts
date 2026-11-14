@@ -1,3 +1,4 @@
+import { translate } from './i18n.ts';
 import { type App, Modal, Notice, Setting, TFile, TFolder, setIcon } from 'obsidian';
 import type AICuratorPlugin from './main.ts';
 import { PRESETS, preset } from './providers.ts';
@@ -31,11 +32,11 @@ export function detectSources(app: App, output: string): Candidate[] {
     .slice(0, 6)
     .map(([path, e]) => ({
       path, count: e.count,
-      hint: e.x > e.count / 2 ? 'Looks like X bookmarks' : path.toLowerCase().includes('clipping') ? 'Looks like Web Clipper' : 'Notes with source links',
+      hint: e.x > e.count / 2 ? translate("Looks like X bookmarks") : path.toLowerCase().includes('clipping') ? translate("Looks like Web Clipper") : translate("Notes with source links"),
     }));
   const clippings = app.vault.getAbstractFileByPath('Clippings');
   if (clippings instanceof TFolder && !out.some((c) => c.path === 'Clippings')) {
-    out.unshift({ path: 'Clippings', count: clippings.children.filter((f) => f instanceof TFile).length, hint: 'Web Clipper’s default folder' });
+    out.unshift({ path: 'Clippings', count: clippings.children.filter((f) => f instanceof TFile).length, hint: translate("Web Clipper’s default folder") });
   }
   return out;
 }
@@ -71,10 +72,10 @@ export class SetupModal extends Modal {
   private get s() { return this.plugin.settings; }
 
   private steps = [
-    { title: 'Where do your saves land?', render: (el: HTMLElement) => this.renderSources(el) },
-    { title: 'Connect an AI model', render: (el: HTMLElement) => this.renderProvider(el) },
-    { title: 'Make it yours', render: (el: HTMLElement) => this.renderPersonal(el) },
-    { title: 'Your existing saves', render: (el: HTMLElement) => this.renderBacklog(el) },
+    { title: translate("Where do your saves land?"), render: (el: HTMLElement) => this.renderSources(el) },
+    { title: translate("Connect an AI model"), render: (el: HTMLElement) => this.renderProvider(el) },
+    { title: translate("Make it yours"), render: (el: HTMLElement) => this.renderPersonal(el) },
+    { title: translate("Your existing saves"), render: (el: HTMLElement) => this.renderBacklog(el) },
   ];
 
   private render() {
@@ -83,23 +84,23 @@ export class SetupModal extends Modal {
     const head = el.createDiv({ cls: 'aic-setup-head' });
     setIcon(head.createDiv({ cls: 'aic-setup-logo' }), 'sparkles');
     const h = head.createDiv();
-    h.createDiv({ cls: 'aic-setup-kicker', text: `AI Curator · step ${this.step + 1} of ${this.steps.length}` });
+    h.createDiv({ cls: 'aic-setup-kicker', text: translate("AI Curator · step {0} of {1}", this.step + 1, this.steps.length) });
     h.createEl('h2', { text: this.steps[this.step].title });
     const dots = el.createDiv({ cls: 'aic-setup-dots' });
     this.steps.forEach((_, i) => dots.createSpan({ cls: 'aic-dot' + (i <= this.step ? ' is-done' : '') }));
     const body = el.createDiv({ cls: 'aic-setup-body' });
     this.steps[this.step].render(body);
     const nav = el.createDiv({ cls: 'aic-setup-nav' });
-    if (this.step > 0) nav.createEl('button', { text: 'Back' }).addEventListener('click', () => { this.step--; this.render(); });
-    else nav.createEl('button', { text: 'Later' }).addEventListener('click', () => this.close());
+    if (this.step > 0) nav.createEl('button', { text: translate("Back") }).addEventListener('click', () => { this.step--; this.render(); });
+    else nav.createEl('button', { text: translate("Later") }).addEventListener('click', () => this.close());
     const last = this.step === this.steps.length - 1;
-    const next = nav.createEl('button', { cls: 'mod-cta', text: last ? 'Start curating' : 'Continue' });
+    const next = nav.createEl('button', { cls: 'mod-cta', text: last ? translate("Start curating") : translate("Continue") });
     next.addEventListener('click', () => { void this.next(); });
   }
 
   private async next() {
     if (this.step === 0) {
-      if (!this.chosen.size) { new Notice('Pick at least one folder.'); return; }
+      if (!this.chosen.size) { new Notice(translate("Pick at least one folder.")); return; }
       this.s.sources = [...this.chosen];
       await this.plugin.saveSettings();
       this.plugin.curator.scan();
@@ -107,7 +108,7 @@ export class SetupModal extends Modal {
     if (this.step === 1) {
       if (this.keyDraft.trim()) { await this.plugin.setApiKey(this.keyDraft); this.keyDraft = ''; }
       if (preset(this.s.provider).needsKey && !this.plugin.apiKey()) {
-        new Notice('Add an API key to continue, or choose a local model.');
+        new Notice(translate("Add an API key to continue, or choose a local model."));
         return;
       }
     }
@@ -126,10 +127,10 @@ export class SetupModal extends Modal {
   }
 
   private renderSources(el: HTMLElement) {
-    el.createEl('p', { text: 'Choose the folders where clipped articles and bookmarks arrive. AI Curator only reads these folders and never edits the notes in them.' });
+    el.createEl('p', { text: translate("Choose the folders where clipped articles and bookmarks arrive. AI Curator only reads these folders and never edits the notes in them.") });
     const list = el.createDiv({ cls: 'aic-choices' });
     const all = [...this.candidates];
-    for (const path of this.chosen) if (!all.some((c) => c.path === path)) all.push({ path, count: 0, hint: 'Chosen by you' });
+    for (const path of this.chosen) if (!all.some((c) => c.path === path)) all.push({ path, count: 0, hint: translate("Chosen by you") });
     for (const c of all) {
       const row = list.createEl('label', { cls: 'aic-choice' });
       const box = row.createEl('input', { attr: { type: 'checkbox' } });
@@ -137,39 +138,40 @@ export class SetupModal extends Modal {
       box.addEventListener('change', () => { if (box.checked) this.chosen.add(c.path); else this.chosen.delete(c.path); });
       const text = row.createDiv();
       text.createDiv({ cls: 'aic-choice-title', text: c.path });
-      text.createDiv({ cls: 'aic-choice-hint', text: `${c.hint}${c.count ? ` · ${c.count} notes` : ''}` });
+      text.createDiv({ cls: 'aic-choice-hint', text: c.hint + (c.count ? translate(' · {0} notes', c.count) : '') });
     }
     if (!all.length) {
-      el.createEl('p', { cls: 'aic-muted', text: 'No clipping folder found yet. The free Obsidian Web Clipper saves to “Clippings” by default.' });
+      el.createEl('p', { cls: 'aic-muted', text: translate("No clipping folder found yet. The free Obsidian Web Clipper saves to “Clippings” by default.") });
     }
     let draft = '';
     new Setting(el)
-      .setName('Another folder')
-      .addSearch((s) => { s.setPlaceholder('Search folders'); s.onChange((v) => { draft = v; }); new FolderSuggest(this.app, s.inputEl, (p) => { draft = p; }); })
-      .addButton((b) => b.setButtonText('Add').onClick(() => {
+      .setName(translate("Another folder"))
+      .addSearch((s) => { s.setPlaceholder(translate("Search folders")); s.onChange((v) => { draft = v; }); new FolderSuggest(this.app, s.inputEl, (p) => { draft = p; }); })
+      .addButton((b) => b.setButtonText(translate("Add")).onClick(() => {
         const f = normalizeFolder(draft);
         if (f && !isInFolder(f, this.s.outputFolder)) { this.chosen.add(f); this.render(); }
       }));
     if (!(this.app.vault.getAbstractFileByPath('Clippings') instanceof TFolder)) {
       new Setting(el)
-        .setName('Starting fresh?')
-        .setDesc('Create a “Clippings” folder for Obsidian Web Clipper and curate it.')
-        .addButton((b) => b.setButtonText('Create Clippings').onClick(async () => {
+        .setName(translate("Starting fresh?"))
+        .setDesc(translate("Create a “Clippings” folder for Obsidian Web Clipper and curate it."))
+        .addButton((b) => b.setButtonText(translate("Create Clippings")).onClick(async () => {
           await this.app.vault.createFolder('Clippings').catch(() => {});
           this.chosen.add('Clippings');
           this.candidates = detectSources(this.app, this.s.outputFolder);
           this.render();
         }))
-        .addExtraButton((b) => b.setIcon('external-link').setTooltip('Get Web Clipper').onClick(() => openExternal(WEB_CLIPPER)));
+        .addExtraButton((b) => b.setIcon('external-link').setTooltip(translate("Get Web Clipper")).onClick(() => openExternal(WEB_CLIPPER)));
     }
   }
 
   private renderProvider(el: HTMLElement) {
     const p = preset(this.s.provider);
-    el.createEl('p', { text: 'AI Curator sends each saved item and its metadata, your optional profile, and existing topic and tag names to the AI provider you choose. DeepSeek is a good default: about $0.002 per article.' });
-    new Setting(el).setName('Provider').addDropdown((d) => {
+    el.createEl('p', { text: translate("AI Curator sends each saved item and its metadata, your optional profile, and existing topic and tag names to the AI provider you choose. DeepSeek is a good default: about $0.002 per article.") });
+    new Setting(el).setName(translate("Provider")).addDropdown((d) => {
       for (const option of PRESETS) d.addOption(option.id, option.name);
       d.setValue(this.s.provider).onChange(async (v) => {
+        this.keyDraft = '';
         this.s.provider = v;
         this.s.providers[v] ??= defaultProviderSettings(v);
         this.testResult = '';
@@ -180,66 +182,68 @@ export class SetupModal extends Modal {
     const ps = this.plugin.providerSettings();
     if (!p.models.length || p.local || p.id === 'custom') {
       if (p.local || p.id === 'custom') {
-        new Setting(el).setName('API address').addText((t) => t.setValue(ps.baseUrl).setPlaceholder('http://localhost:11434/v1').onChange(async (v) => { ps.baseUrl = v.trim(); await this.plugin.saveSettings(); }));
+        new Setting(el).setName(translate("API address")).addText((t) => t.setValue(ps.baseUrl).setPlaceholder('http://localhost:11434/v1').onChange(async (v) => { ps.baseUrl = v.trim(); await this.plugin.saveSettings(); }));
       }
-      new Setting(el).setName('Model').setDesc('For example gpt-5-mini, gemini-flash or qwen3:14b.').addText((t) => t.setValue(ps.model).onChange(async (v) => { ps.model = v.trim(); await this.plugin.saveSettings(); }));
+      new Setting(el).setName(translate("Model")).setDesc(translate("For example gpt-5-mini, gemini-flash or qwen3:14b.")).addText((t) => t.setValue(ps.model).onChange(async (v) => { ps.model = v.trim(); await this.plugin.saveSettings(); }));
     }
     if (p.needsKey || p.id === 'custom') {
       const has = !!this.plugin.apiKey();
       new Setting(el)
-        .setName('API key')
+        .setName(translate("API key"))
         .setDesc(createFragment((f) => {
-          f.appendText(has ? 'A key is saved. Paste a new one to replace it. ' : 'Kept in Obsidian’s secure storage, never in your notes. ');
-          if (p.keyUrl) { const a = f.createEl('a', { text: `Get a ${p.name.split(' ')[0]} key`, href: p.keyUrl }); a.addEventListener('click', (e) => { e.preventDefault(); openExternal(p.keyUrl!); }); }
+          f.appendText(has ? translate("A key is saved. Paste a new one to replace it. ") : translate("Kept in Obsidian’s secure storage, never in your notes. "));
+          if (p.keyUrl) { const a = f.createEl('a', { text: translate("Get a {0} key", p.name.split(' ')[0]), href: p.keyUrl }); a.addEventListener('click', (e) => { e.preventDefault(); openExternal(p.keyUrl!); }); }
         }))
         .addText((t) => { t.inputEl.type = 'password'; t.inputEl.autocomplete = 'off'; t.setPlaceholder(has ? '••••••••' : 'sk-…').onChange((v) => { this.keyDraft = v; }); });
     }
-    const test = new Setting(el).setName('Check it works').setDesc(this.testResult || 'Sends a one-word test request.');
-    test.addButton((b) => b.setButtonText('Test').onClick(async () => {
+    const test = new Setting(el).setName(translate("Check it works")).setDesc(this.testResult || translate("Sends a one-word test request."));
+    test.addButton((b) => b.setButtonText(translate("Test")).onClick(async () => {
       if (this.keyDraft.trim()) { await this.plugin.setApiKey(this.keyDraft); this.keyDraft = ''; }
-      b.setDisabled(true).setButtonText('Testing…');
+      b.setDisabled(true).setButtonText(translate("Testing…"));
       const r = await this.plugin.testConnection();
       this.testResult = (r.ok ? '✓ ' : '✗ ') + r.message;
       this.render();
     }));
-    if (p.kind === 'anthropic') el.createEl('p', { cls: 'aic-muted', text: 'Claude works great if the API is available in your region. Requests go directly from Obsidian to Anthropic.' });
+    if (p.kind === 'anthropic') el.createEl('p', { cls: 'aic-muted', text: translate("Claude works great if the API is available in your region. Requests go directly from Obsidian to Anthropic.") });
   }
 
   private renderPersonal(el: HTMLElement) {
-    el.createEl('p', { text: 'Optional, but it makes the recommendations much better: tell the curator what you care about.' });
-    new Setting(el).setName('Language of curated notes').addDropdown((d) => d
-      .addOption('auto', 'Same as Obsidian').addOption('en', 'English').addOption('zh', '简体中文')
+    el.createEl('p', { text: translate("Optional, but it makes the recommendations much better: tell the curator what you care about.") });
+    new Setting(el).setName(translate("Language of curated notes")).addDropdown((d) => d
+      .addOption('auto', translate("Same as Obsidian")).addOption('en', translate("English")).addOption('zh', '简体中文')
       .setValue(this.s.language).onChange(async (v) => { this.s.language = v as typeof this.s.language; await this.plugin.saveSettings(); }));
-    const area = new Setting(el).setName('About you').setDesc('Your work, goals and interests. Sent with each item to judge relevance.');
+    const area = new Setting(el).setName(translate("About you")).setDesc(translate("Your work, goals and interests. Sent with each item to judge relevance."));
     area.addTextArea((t) => {
-      t.setPlaceholder('e.g. Product manager learning AI engineering. I want practical tutorials, not news.');
+      t.setPlaceholder(translate("e.g. Product manager learning AI engineering. I want practical tutorials, not news."));
       t.setValue(this.s.profile).onChange(async (v) => { this.s.profile = v.slice(0, 2000); await this.plugin.saveSettings(); });
       t.inputEl.rows = 4;
       t.inputEl.addClass('ai-curator-wide');
     });
     area.settingEl.addClass('aic-stacked');
-    const xLike = this.candidates.some((c) => this.chosen.has(c.path) && c.hint.includes('X'));
     new Setting(el)
-      .setName('Expand cut-off X posts')
-      .setDesc('Reads long X posts and X Articles through the public FxTwitter API, which receives the post ID.')
-      .addToggle((t) => t.setValue(this.s.expandX || xLike).onChange(async (v) => { this.s.expandX = v; await this.plugin.saveSettings(); }));
-    if (xLike && !this.s.expandX) { this.s.expandX = true; void this.plugin.saveSettings(); }
+      .setName(translate("Recover full text from original links"))
+      .setDesc(translate("When a saved note is incomplete, contact its original website. Disable this and X expansion for offline use."))
+      .addToggle((t) => t.setValue(this.s.fetchFullText).onChange(async (v) => { this.s.fetchFullText = v; await this.plugin.saveSettings(); }));
+    new Setting(el)
+      .setName(translate("Expand cut-off X posts"))
+      .setDesc(translate("Reads long X posts and X Articles through the public FxTwitter API, which receives the post ID."))
+      .addToggle((t) => t.setValue(this.s.expandX).onChange(async (v) => { this.s.expandX = v; await this.plugin.saveSettings(); }));
   }
 
   private renderBacklog(el: HTMLElement) {
     const est = this.plugin.curator.backlogEstimate();
     if (!est.count) {
-      el.createEl('p', { text: 'All set. From now on, everything you save into your folders is curated automatically, usually within a minute.' });
-      el.createEl('p', { cls: 'aic-muted', text: `Monthly budget: ${money(this.s.monthlyBudget)} (change it in settings).` });
+      el.createEl('p', { text: translate("All set. From now on, everything you save into your folders is curated automatically, usually within a minute.") });
+      el.createEl('p', { cls: 'aic-muted', text: translate("Monthly budget: {0} (change it in settings).", money(this.s.monthlyBudget)) });
       this.backlog = 'none';
       return;
     }
     const per = est.cost != null ? est.cost / est.count : null;
-    el.createEl('p', { text: `You already have ${est.count} saved notes in these folders. New saves are always curated automatically. What about these?` });
+    el.createEl('p', { text: translate("You already have {0} saved notes in these folders. New saves are always curated automatically. What about these?", est.count) });
     const opts: { id: 'ten' | 'all' | 'none'; title: string; hint: string }[] = [
-      { id: 'ten', title: 'Start with the newest 10', hint: `See the results first${per != null ? ` · about ${money(per * Math.min(10, est.count))}` : ''}. Curate the rest later from the inbox.` },
-      { id: 'all', title: `Curate all ${est.count}`, hint: est.cost != null ? `About ${money(est.cost)} in total; runs in the background.` : 'Runs in the background.' },
-      { id: 'none', title: 'Only new saves', hint: 'Leave existing notes alone. You can start them any time from the inbox.' },
+      { id: 'ten', title: translate("Start with the newest 10"), hint: translate("See the results first{0}. Curate the rest later from the inbox.", per != null ? translate(" · about {0}", money(per * Math.min(10, est.count))) : '') },
+      { id: 'all', title: translate("Curate all {0}", est.count), hint: est.cost != null ? translate("About {0} in total; runs in the background.", money(est.cost)) : translate("Runs in the background.") },
+      { id: 'none', title: translate("Only new saves"), hint: translate("Leave existing notes alone. You can start them any time from the inbox.") },
     ];
     if (est.count <= 10) opts.splice(0, 1);
     if (!opts.some((o) => o.id === this.backlog)) this.backlog = opts[0].id;
@@ -253,6 +257,6 @@ export class SetupModal extends Modal {
       text.createDiv({ cls: 'aic-choice-title', text: o.title });
       text.createDiv({ cls: 'aic-choice-hint', text: o.hint });
     }
-    el.createEl('p', { cls: 'aic-muted', text: `Spending is capped at ${money(this.s.monthlyBudget)} per month and ${this.s.dailyLimit} items per day. Costs are estimates; your provider’s bill is authoritative.` });
+    el.createEl('p', { cls: 'aic-muted', text: translate("Estimated monthly budget: {0}; daily limit: {1} items. Your provider’s bill is authoritative.", money(this.s.monthlyBudget), this.s.dailyLimit) });
   }
 }

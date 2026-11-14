@@ -2,6 +2,7 @@
 import type { IndexData, Item, Usage } from './types.ts';
 
 export const MAX_ATTEMPTS = 4;
+export const OUTPUT_TOKENS = 4000;
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 
@@ -52,7 +53,7 @@ export type BudgetBlock = { blocked: false } | { blocked: true; reason: 'daily' 
 export function budgetCheck(usage: Usage, now: number, limits: Limits, nextCost: number | null): BudgetBlock {
   const u = rollUsage(usage, now);
   if (u.dayItems >= limits.dailyLimit) return { blocked: true, reason: 'daily' };
-  if (limits.monthlyBudget > 0 && u.cost + (nextCost ?? 0) > limits.monthlyBudget) return { blocked: true, reason: 'monthly' };
+  if (limits.monthlyBudget > 0 && (u.cost >= limits.monthlyBudget || u.cost + (nextCost ?? 0) > limits.monthlyBudget)) return { blocked: true, reason: 'monthly' };
   return { blocked: false };
 }
 
@@ -95,7 +96,7 @@ export function counts(items: Iterable<Item>): QueueCounts {
 }
 
 /** Rough cost of analyzing `chars` characters, for the backlog estimate shown before the user approves it. */
-export function estimateItemCost(inputTokens: number, price: { input: number; output: number } | null, outputTokens = 1200): number | null {
+export function estimateItemCost(inputTokens: number, price: { input: number; output: number } | null, outputTokens = OUTPUT_TOKENS): number | null {
   if (!price) return null;
   const promptOverhead = 1500;
   return ((inputTokens + promptOverhead) * price.input + outputTokens * price.output) / 1_000_000;

@@ -14,12 +14,16 @@ const context = await esbuild.context({
   sourcemap: production ? false : 'inline',
   minify: production,
   treeShaking: true,
+  metafile: true,
   legalComments: 'none',
   outfile: 'main.js',
 });
 
 if (production) {
-  await context.rebuild();
+  const result = await context.rebuild();
+  const unexpected = Object.values(result.metafile.outputs).flatMap((o) => o.imports)
+    .filter((i) => i.external && i.path !== 'obsidian');
+  if (unexpected.length) throw new Error('Unexpected desktop-only or unbundled runtime dependency: ' + unexpected.map((i) => i.path).join(', '));
   await context.dispose();
 } else {
   await context.watch();

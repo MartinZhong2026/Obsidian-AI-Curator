@@ -19,6 +19,7 @@ export interface CuratorSettings {
   provider: string;
   providers: Record<string, ProviderSettings>;
   language: LanguageSetting;
+  uiLanguage: LanguageSetting;
   profile: string;
   /** Analyze new items automatically in the background. */
   autoProcess: boolean;
@@ -49,6 +50,7 @@ export const DEFAULT_SETTINGS: CuratorSettings = {
   provider: 'deepseek',
   providers: {},
   language: 'auto',
+  uiLanguage: 'auto',
   profile: '',
   autoProcess: true,
   paused: false,
@@ -77,15 +79,26 @@ export function isInFolder(path: string, folder: string): boolean {
 
 export function migrateSettings(raw: unknown): CuratorSettings {
   const data = (raw && typeof raw === 'object' ? raw : {}) as Partial<CuratorSettings> & Record<string, unknown>;
-  const s: CuratorSettings = { ...DEFAULT_SETTINGS, ...data, providers: { ...(data.providers ?? {}) } };
+  const s: CuratorSettings = { ...DEFAULT_SETTINGS, providers: {} };
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof CuratorSettings)[]) {
+    if (key !== 'providers' && data[key] !== undefined && typeof data[key] === typeof DEFAULT_SETTINGS[key]) {
+      (s as unknown as Record<string, unknown>)[key] = data[key];
+    }
+  }
   s.sources = (Array.isArray(data.sources) ? data.sources : []).map((f) => normalizeFolder(String(f))).filter(Boolean);
   s.sources = [...new Set(s.sources)];
   s.outputFolder = normalizeFolder(String(s.outputFolder || '')) || DEFAULT_SETTINGS.outputFolder;
   if (!PRESETS.some((p) => p.id === s.provider)) s.provider = DEFAULT_SETTINGS.provider;
   for (const p of PRESETS) {
-    s.providers[p.id] = { ...defaultProviderSettings(p.id), ...(s.providers[p.id] ?? {}) };
+    const defaults = defaultProviderSettings(p.id);
+    const input = data.providers?.[p.id];
+    s.providers[p.id] = Object.fromEntries(Object.entries(defaults).map(([key, value]) => {
+      const saved = input?.[key as keyof ProviderSettings];
+      return [key, typeof saved === typeof value && (typeof saved !== 'number' || Number.isFinite(saved)) ? saved : value];
+    })) as unknown as ProviderSettings;
   }
   if (!['auto', 'en', 'zh'].includes(s.language)) s.language = 'auto';
+  if (!['auto', 'en', 'zh'].includes(s.uiLanguage)) s.uiLanguage = 'auto';
   s.monthlyBudget = Math.max(0, Number(s.monthlyBudget) || 0);
   s.dailyLimit = Math.max(1, Math.round(Number(s.dailyLimit) || DEFAULT_SETTINGS.dailyLimit));
   s.settleSeconds = Math.min(600, Math.max(0, Number(s.settleSeconds) || 0));

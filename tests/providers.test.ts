@@ -99,3 +99,28 @@ test('model listing and cost estimates', async () => {
   assert.equal(estimateCost('unknown-model', 10, 10), null);
   assert.equal(estimateCost('unknown-model', 1_000_000, 0, { input: 2, output: 0 }), 2);
 });
+
+test('provider errors redact credentials before they can reach notes or settings', async () => {
+  const t = fakeTransport(() => ({ status: 401, text: JSON.stringify({ error: { message: 'Invalid sk-secret; retry with sk-secret' } }) }));
+  for (const invoke of [() => chat(deepseek, req, t), () => listModels(deepseek, t)]) {
+    await assert.rejects(invoke(), (e: ProviderError) => e.status === 401 && !e.message.includes('sk-secret') && e.message.includes('[redacted]'));
+  }
+  const network = fakeTransport(() => { throw new Error('Request with sk-secret failed'); });
+  await assert.rejects(chat(deepseek, req, network), (e: Error) => !e.message.includes('sk-secret'));
+  const claude = fakeTransport(() => ({ status: 403, text: JSON.stringify({ error: { type: 'permission_error', message: 'Invalid sk-ant-private' } }) }));
+  await assert.rejects(chat({ provider: 'anthropic', baseUrl: '', model: 'claude-opus-5-5', apiKey: 'sk-ant-private' }, req, claude), (e: ProviderError) => e.fatal && !e.message.includes('sk-ant-private'));
+});
+
+test('local presets cannot send credentials over remote HTTP or non-HTTP protocols', async () => {
+  const t = fakeTransport(() => deepseekReply('{}'));
+  for (const baseUrl of ['http://remote.example/v1', 'ftp://localhost/v1', 'file:///tmp/model']) {
+    await assert.rejects(chat({ ...deepseek, provider: 'ollama', baseUrl }, req, t), /https|HTTP/i);
+  }
+  assert.equal(t.calls.length, 0);
+});
+
+test('Claude respects the requested output ceiling used by budget reservations', async () => {
+  const t = fakeTransport(() => ({ status: 200, text: JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: 'claude-opus-5-5', stop_reason: 'end_turn', content: [{ type: 'text', text: '{}' }], usage: { input_tokens: 1, output_tokens: 1 } }) }));
+  await chat({ provider: 'anthropic', baseUrl: '', model: 'claude-opus-5-5', apiKey: 'test' }, req, t);
+  assert.equal(JSON.parse(t.calls[0].body!).max_tokens, req.maxTokens);
+});

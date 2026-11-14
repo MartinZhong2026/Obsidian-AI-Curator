@@ -1,3 +1,4 @@
+import { translate, uiLanguage } from './i18n.ts';
 import { ItemView, Menu, TFile, type WorkspaceLeaf, debounce, setIcon, setTooltip } from 'obsidian';
 import type AICuratorPlugin from './main.ts';
 import type { Item, Verdict } from './types.ts';
@@ -33,6 +34,7 @@ export class CuratorView extends ItemView {
   private query = '';
   private topic = '';
   private limit = PAGE;
+  private renderedLanguage = uiLanguage();
   private off: (() => void) | null = null;
   private listEl!: HTMLElement;
   private headerEl!: HTMLElement;
@@ -49,7 +51,7 @@ export class CuratorView extends ItemView {
   }
 
   getViewType() { return VIEW_TYPE; }
-  getDisplayText() { return 'Reading inbox'; }
+  getDisplayText() { return translate("Reading inbox"); }
   getIcon() { return 'sparkles'; }
 
   async onOpen() {
@@ -75,6 +77,13 @@ export class CuratorView extends ItemView {
   private get curator() { return this.plugin.curator; }
 
   private render() {
+    if (this.renderedLanguage !== uiLanguage()) {
+      this.renderedLanguage = uiLanguage();
+      this.toolsEl.empty();
+      this.buildTools();
+      const search = this.toolsEl.querySelector('input') as HTMLInputElement;
+      search.value = this.query;
+    }
     this.renderHeader();
     this.renderBanners();
     this.renderTabs();
@@ -87,7 +96,7 @@ export class CuratorView extends ItemView {
     el.empty();
     const titleRow = el.createDiv({ cls: 'aic-title-row' });
     const t = titleRow.createDiv({ cls: 'aic-title' });
-    t.createEl('h2', { text: 'Reading inbox' });
+    t.createEl('h2', { text: translate("Reading inbox") });
     t.createDiv({ cls: 'aic-subtitle', text: this.stateLine() });
     const actions = titleRow.createDiv({ cls: 'aic-header-actions' });
     const button = (icon: string, label: string, onClick: () => void) => {
@@ -96,15 +105,15 @@ export class CuratorView extends ItemView {
       b.addEventListener('click', onClick);
       return b;
     };
-    button('refresh-cw', 'Scan and process now', () => { this.curator.scan(); this.curator.kick(true); });
+    button('refresh-cw', translate("Scan and process now"), () => { this.curator.scan(); this.curator.kick(true); });
     const paused = this.plugin.settings.paused;
-    button(paused ? 'play' : 'pause', paused ? 'Resume curation' : 'Pause curation', () => { void this.plugin.pause(!paused); });
-    button('newspaper', 'Create weekly digest', async () => {
+    button(paused ? 'play' : 'pause', paused ? translate("Resume curation") : translate("Pause curation"), () => { void this.plugin.pause(!paused); });
+    button('newspaper', translate("Create weekly digest"), async () => {
       const path = await this.curator.writeDigest(7);
       const f = this.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) await this.app.workspace.getLeaf('tab').openFile(f);
     });
-    button('settings', 'Settings', () => {
+    button('settings', translate("Settings"), () => {
       const setting = (this.app as unknown as { setting?: { open(): void; openTabById(id: string): void } }).setting;
       setting?.open();
       setting?.openTabById(this.plugin.manifest.id);
@@ -118,25 +127,25 @@ export class CuratorView extends ItemView {
       s.createDiv({ cls: 'aic-stat-label', text: label });
     };
     const readNext = this.curator.items().filter((i) => i.state === 'done' && i.status === 'unread' && i.analysis?.verdict === 'read').length;
-    stat(readNext, 'worth reading', 'is-accent');
-    stat(c.unread, 'unread');
-    stat(c.done, 'curated');
-    stat(c.pending + c.analyzing, 'in queue');
+    stat(readNext, translate("worth reading"), 'is-accent');
+    stat(c.unread, translate('unread'));
+    stat(c.done, translate("curated"));
+    stat(c.pending + c.analyzing, translate("in queue"));
     const u = this.curator.usage();
-    stat(money(u.cost), 'this month');
+    stat(money(u.cost), translate("this month"));
   }
 
   private stateLine(): string {
     const st = this.curator.state;
     const c = this.curator.counts();
     switch (st.kind) {
-      case 'working': return `Curating “${st.current}”…`;
-      case 'paused': return 'Paused';
-      case 'needs-setup': return 'Setup needed';
-      case 'limit': return st.reason === 'daily' ? 'Daily limit reached; continues tomorrow' : 'Monthly budget reached';
+      case 'working': return translate("Curating “{0}”…", st.current);
+      case 'paused': return translate("Paused");
+      case 'needs-setup': return translate("Setup needed");
+      case 'limit': return st.reason === 'daily' ? translate("Daily limit reached; continues tomorrow") : translate("Monthly budget reached");
       default:
-        if (c.pending) return `${c.pending} waiting (new saves settle for a few seconds first)`;
-        return c.done ? 'All caught up' : 'Waiting for your first saves';
+        if (c.pending) return translate("{0} waiting (new saves settle for a few seconds first)", c.pending);
+        return c.done ? translate("All caught up") : translate("Waiting for your first saves");
     }
   }
 
@@ -156,32 +165,32 @@ export class CuratorView extends ItemView {
     const st = this.curator.state;
     const s = this.plugin.settings;
     if (st.kind === 'needs-setup') {
-      const text = st.reason === 'sources' ? 'Choose which folders to curate.'
-        : st.reason === 'key' ? 'Add your AI provider’s API key to start curating.'
-        : 'Choose an AI model to start curating.';
-      this.banner('info', 'wand-2', text, [['Open setup', () => new SetupModal(this.app, this.plugin).open(), true]]);
+      const text = st.reason === 'sources' ? translate("Choose which folders to curate.")
+        : st.reason === 'key' ? translate("Add your AI provider’s API key to start curating.")
+        : translate("Choose an AI model to start curating.");
+      this.banner('info', 'wand-2', text, [[translate("Open setup"), () => new SetupModal(this.app, this.plugin).open(), true]]);
     }
     if (s.paused) {
       this.banner(s.pauseReason && s.pauseReason !== 'Paused by you.' ? 'error' : 'warn', 'pause-circle',
-        s.pauseReason && s.pauseReason !== 'Paused by you.' ? `Paused: ${s.pauseReason}` : 'Curation is paused.',
-        [['Resume', () => { void this.plugin.pause(false); }, true]]);
+        s.pauseReason && s.pauseReason !== 'Paused by you.' ? translate("Paused: {0}", s.pauseReason) : translate("Curation is paused."),
+        [[translate("Resume"), () => { void this.plugin.pause(false); }, true]]);
     }
     if (st.kind === 'limit') {
       this.banner('warn', 'wallet', st.reason === 'daily'
-        ? `Daily limit of ${s.dailyLimit} items reached. Curation continues tomorrow.`
-        : `Monthly budget of ${money(s.monthlyBudget)} reached. Raise it in settings to continue.`, []);
+        ? translate("Daily limit of {0} items reached. Curation continues tomorrow.", s.dailyLimit)
+        : translate("Monthly budget of {0} reached. Raise it in settings to continue.", money(s.monthlyBudget)), []);
     }
     const held = this.curator.heldItems();
     if (held.length) {
       const est = this.curator.backlogEstimate();
-      const cost = est.cost == null ? '' : ` Curating all costs about ${money(est.cost)}.`;
+      const cost = est.cost == null ? '' : translate(" Curating all costs about {0}.", money(est.cost));
       const actions: [string, () => void, boolean?][] = [];
-      if (held.length > 10) actions.push(['Newest 10', () => this.curator.releaseBacklog(10), true]);
-      actions.push([`All ${held.length}`, () => this.curator.releaseBacklog(), held.length <= 10]);
-      this.banner('info', 'archive', `${held.length} notes were already in your folders before AI Curator. New saves are curated automatically; choose what to do with these.${cost}`, actions);
+      if (held.length > 10) actions.push([translate("Newest 10"), () => this.curator.releaseBacklog(10), true]);
+      actions.push([translate("All {0}", held.length), () => this.curator.releaseBacklog(), held.length <= 10]);
+      this.banner('info', 'archive', translate("{0} notes were already in your folders before AI Curator. New saves are curated automatically; choose what to do with these.{1}", held.length, cost), actions);
     }
     const errors = this.curator.counts().errors;
-    if (errors) this.banner('error', 'alert-triangle', `${errors} item${errors > 1 ? 's' : ''} failed.`, [['Retry', () => this.curator.retryErrors()], ['Show', () => { this.tab = 'queue'; this.render(); }]]);
+    if (errors) this.banner('error', 'alert-triangle', translate("{0} items failed.", errors), [[translate("Retry"), () => this.curator.retryErrors()], [translate("Show"), () => { this.tab = 'queue'; this.render(); }]]);
   }
 
   private tabCount(tab: Tab): number { return this.itemsFor(tab, false).length; }
@@ -191,17 +200,17 @@ export class CuratorView extends ItemView {
     for (const t of TABS) {
       const n = this.tabCount(t.id);
       const el = this.tabsEl.createEl('button', { cls: 'aic-tab' + (this.tab === t.id ? ' is-active' : ''), attr: { role: 'tab', 'aria-selected': String(this.tab === t.id) } });
-      el.createSpan({ text: t.label });
+      el.createSpan({ text: translate(t.label) });
       if (n) el.createSpan({ cls: 'aic-tab-count', text: String(n) });
-      setTooltip(el, t.hint);
+      setTooltip(el, translate(t.hint));
       el.addEventListener('click', () => { this.tab = t.id; this.limit = PAGE; this.render(); });
     }
   }
 
   private buildTools() {
-    const search = this.toolsEl.createEl('input', { cls: 'aic-search', attr: { type: 'search', placeholder: 'Search titles, summaries, tags…', 'aria-label': 'Search' } });
+    const search = this.toolsEl.createEl('input', { cls: 'aic-search', attr: { type: 'search', placeholder: translate("Search titles, summaries, tags…"), 'aria-label': translate("Search") } });
     search.addEventListener('input', debounce(() => { this.query = search.value.trim().toLowerCase(); this.limit = PAGE; this.renderList(); this.renderTabs(); }, 200, true));
-    this.toolsEl.createEl('select', { cls: 'dropdown aic-topic', attr: { 'aria-label': 'Filter by topic' } });
+    this.toolsEl.createEl('select', { cls: 'dropdown aic-topic', attr: { 'aria-label': translate("Filter by topic") } });
   }
 
   private renderTopicFilter() {
@@ -209,7 +218,7 @@ export class CuratorView extends ItemView {
     const topics = new Map<string, number>();
     for (const i of this.curator.items()) if (i.analysis) topics.set(i.analysis.topic, (topics.get(i.analysis.topic) ?? 0) + 1);
     select.empty();
-    select.createEl('option', { value: '', text: 'All topics' });
+    select.createEl('option', { value: '', text: translate("All topics") });
     for (const [t, n] of [...topics].sort((a, b) => b[1] - a[1])) select.createEl('option', { value: t, text: `${t} (${n})` });
     if (this.topic && !topics.has(this.topic)) this.topic = '';
     select.value = this.topic;
@@ -252,7 +261,7 @@ export class CuratorView extends ItemView {
       else this.renderCard(el, item);
     }
     if (items.length > this.limit) {
-      const more = el.createEl('button', { cls: 'aic-more', text: `Show more (${items.length - this.limit})` });
+      const more = el.createEl('button', { cls: 'aic-more', text: translate("Show more ({0})", items.length - this.limit) });
       more.addEventListener('click', () => { this.limit += PAGE; this.renderList(); });
     }
   }
@@ -262,16 +271,16 @@ export class CuratorView extends ItemView {
     setIcon(e.createDiv({ cls: 'aic-empty-icon' }), this.tab === 'queue' ? 'check-circle-2' : 'inbox');
     const c = this.curator.counts();
     let text: string;
-    if (this.query || this.topic) text = 'Nothing matches your filter.';
-    else if (this.tab === 'queue') text = 'The queue is empty.';
+    if (this.query || this.topic) text = translate("Nothing matches your filter.");
+    else if (this.tab === 'queue') text = translate("The queue is empty.");
     else if (!c.done) text = this.plugin.settings.sources.length
-      ? 'Save something with Web Clipper (or any tool that writes Markdown into your folders). It will appear here, curated, within a minute.'
-      : 'Pick the folders where your clippings land, and AI Curator takes it from there.';
-    else if (this.tab === 'next') text = 'Nothing marked “worth reading” is waiting. Check Unread or Reference.';
-    else text = 'Nothing here right now.';
+      ? translate("Save something with Web Clipper (or any tool that writes Markdown into your folders). It will appear here, curated, within a minute.")
+      : translate("Pick the folders where your clippings land, and AI Curator takes it from there.");
+    else if (this.tab === 'next') text = translate("Nothing marked “worth reading” is waiting. Check Unread or Reference.");
+    else text = translate("Nothing here right now.");
     e.createDiv({ cls: 'aic-empty-text', text });
     if (!this.plugin.settings.sources.length) {
-      const b = e.createEl('button', { cls: 'mod-cta', text: 'Set up AI Curator' });
+      const b = e.createEl('button', { cls: 'mod-cta', text: translate("Set up AI Curator") });
       b.addEventListener('click', () => new SetupModal(this.app, this.plugin).open());
     }
   }
@@ -286,17 +295,17 @@ export class CuratorView extends ItemView {
     const a = item.analysis!;
     const card = el.createDiv({ cls: `aic-card verdict-${a.verdict}` + (item.status !== 'unread' ? ' is-done' : '') });
     const top = card.createDiv({ cls: 'aic-card-top' });
-    top.createSpan({ cls: `aic-badge verdict-${a.verdict}`, text: VERDICT_LABEL[a.verdict] });
+    top.createSpan({ cls: `aic-badge verdict-${a.verdict}`, text: translate(VERDICT_LABEL[a.verdict]) });
     const score = top.createSpan({ cls: 'aic-score', text: String(a.score) });
-    setTooltip(score, `Score ${a.score}/100 · relevance ${a.scores.relevance}, depth ${a.scores.depth}, evidence ${a.scores.evidence}, actionability ${a.scores.actionability}, originality ${a.scores.originality}`);
+    setTooltip(score, translate("Score {0}/100 · relevance {1}, depth {2}, evidence {3}, actionability {4}, originality {5}", a.score, a.scores.relevance, a.scores.depth, a.scores.evidence, a.scores.actionability, a.scores.originality));
     top.createSpan({ cls: 'aic-topic-chip', text: a.topic });
     if (a.completeness !== 'full') {
-      const w = top.createSpan({ cls: 'aic-chip is-warn', text: a.completeness === 'teaser' ? 'teaser' : 'partial' });
-      setTooltip(w, 'The saved text was incomplete; the analysis covers only what was saved.');
+      const w = top.createSpan({ cls: 'aic-chip is-warn', text: translate(a.completeness === 'teaser' ? 'teaser' : 'partial') });
+      setTooltip(w, translate("The saved text was incomplete; the analysis covers only what was saved."));
     }
     if (item.stale) {
-      const w = top.createSpan({ cls: 'aic-chip is-warn', text: 'changed' });
-      setTooltip(w, 'The original note changed after it was curated. Use “Curate again” to refresh.');
+      const w = top.createSpan({ cls: 'aic-chip is-warn', text: translate("changed") });
+      setTooltip(w, translate("The original note changed after it was curated. Use “Curate again” to refresh."));
     }
 
     const title = card.createEl('a', { cls: 'aic-card-title', text: a.title, href: '#' });
@@ -319,20 +328,20 @@ export class CuratorView extends ItemView {
       b.createSpan({ text: label });
       b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
     };
-    act('file-text', 'Open notes', () => void this.openPath(item.notePath ?? item.path));
-    if (item.url) act('external-link', 'Original', () => openExternal(item.url!));
+    act('file-text', translate("Open notes"), () => void this.openPath(item.notePath ?? item.path));
+    if (item.url) act('external-link', translate("Original"), () => openExternal(item.url!));
     if (item.status === 'unread') {
-      act('check', 'Mark read', () => void this.curator.setStatus(item.path, 'read'), 'is-primary');
-      act('archive', 'Archive', () => void this.curator.setStatus(item.path, 'archived'));
+      act('check', translate("Mark read"), () => void this.curator.setStatus(item.path, 'read'), 'is-primary');
+      act('archive', translate("Archive"), () => void this.curator.setStatus(item.path, 'archived'));
     } else {
-      act('rotate-ccw', 'Back to unread', () => void this.curator.setStatus(item.path, 'unread'));
+      act('rotate-ccw', translate("Back to unread"), () => void this.curator.setStatus(item.path, 'unread'));
     }
-    const more = actions.createEl('button', { cls: 'aic-act clickable-icon', attr: { 'aria-label': 'More' } });
+    const more = actions.createEl('button', { cls: 'aic-act clickable-icon', attr: { 'aria-label': translate("More") } });
     setIcon(more, 'more-horizontal');
     more.addEventListener('click', (e) => {
       const menu = new Menu();
-      menu.addItem((m) => m.setTitle('Open saved original note').setIcon('file').onClick(() => void this.openPath(item.path)));
-      menu.addItem((m) => m.setTitle('Curate again').setIcon('sparkles').onClick(() => this.curator.reanalyze(item.path)));
+      menu.addItem((m) => m.setTitle(translate("Open saved original note")).setIcon('file').onClick(() => void this.openPath(item.path)));
+      menu.addItem((m) => m.setTitle(translate("Curate again")).setIcon('sparkles').onClick(() => this.curator.reanalyze(item.path)));
       menu.showAtMouseEvent(e);
     });
   }
@@ -340,24 +349,24 @@ export class CuratorView extends ItemView {
   private renderQueueRow(el: HTMLElement, item: Item) {
     const row = el.createDiv({ cls: `aic-row state-${item.state}` });
     const icon = row.createDiv({ cls: 'aic-row-icon' });
-    const label = item.state === 'analyzing' ? ['loader', 'Analyzing']
-      : item.state === 'error' ? ['alert-triangle', 'Failed']
-      : item.state === 'skipped' ? (item.skipReason === 'duplicate' ? ['copy', 'Duplicate'] : ['circle-slash', 'No content'])
-      : item.held ? ['archive', 'Backlog']
-      : (item.nextAttemptAt ?? 0) > Date.now() ? ['clock', 'Retrying soon'] : ['clock', 'Waiting'];
+    const label = item.state === 'analyzing' ? ['loader', translate("Analyzing")]
+      : item.state === 'error' ? ['alert-triangle', translate("Failed")]
+      : item.state === 'skipped' ? (item.skipReason === 'duplicate' ? ['copy', translate("Duplicate")] : ['circle-slash', translate("No content")])
+      : item.held ? ['archive', translate("Backlog")]
+      : (item.nextAttemptAt ?? 0) > Date.now() ? ['clock', translate("Retrying soon")] : ['clock', translate("Waiting")];
     setIcon(icon, label[0]);
     const body = row.createDiv({ cls: 'aic-row-body' });
     const title = body.createEl('a', { cls: 'aic-row-title', text: item.title, href: '#' });
     title.addEventListener('click', (e) => { e.preventDefault(); void this.openPath(item.path); });
     const detail = item.state === 'error' || (item.state === 'pending' && item.error) ? item.error
-      : item.skipReason === 'duplicate' ? `Same source as “${this.curator.get(item.dedupeOf ?? '')?.analysis?.title ?? item.dedupeOf}”`
-      : item.skipReason === 'empty' ? 'The note has no text to analyze (only a link, image or embed).'
+      : item.skipReason === 'duplicate' ? translate("Same source as “{0}”", this.curator.get(item.dedupeOf ?? '')?.analysis?.title ?? item.dedupeOf)
+      : item.skipReason === 'empty' ? translate("The note has no text to analyze (only a link, image or embed).")
       : item.path;
     body.createDiv({ cls: 'aic-row-detail', text: `${label[1]} · ${detail ?? ''}` });
     const actions = row.createDiv({ cls: 'aic-row-actions' });
     if (item.state !== 'analyzing') {
-      const b = actions.createEl('button', { text: item.state === 'pending' && !item.held ? 'Now' : 'Curate' });
-      setTooltip(b, item.state === 'skipped' ? 'Analyze anyway' : 'Analyze this item now');
+      const b = actions.createEl('button', { text: item.state === 'pending' && !item.held ? translate("Now") : translate("Curate") });
+      setTooltip(b, item.state === 'skipped' ? translate("Analyze anyway") : translate("Analyze this item now"));
       b.addEventListener('click', () => this.curator.reanalyze(item.path));
     }
   }

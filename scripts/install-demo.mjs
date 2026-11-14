@@ -2,9 +2,10 @@
 //   npm run build && node scripts/install-demo.mjs            → demo/vault (safe, contains only sample notes)
 //   node scripts/install-demo.mjs "/path/to/Your Vault"        → any vault you choose
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 
-const root = resolve(new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+const root = fileURLToPath(new URL('..', import.meta.url));
 const vault = resolve(process.argv[2] ?? join(root, 'demo', 'vault'));
 const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'));
 if (!existsSync(join(root, 'main.js'))) { console.error('Run npm run build first.'); process.exit(1); }
