@@ -2,7 +2,7 @@
 import type { IndexData, Item, Usage } from './types.ts';
 
 export const MAX_ATTEMPTS = 4;
-export const OUTPUT_TOKENS = 4000;
+export const OUTPUT_TOKENS = 8000;
 
 function pad(n: number) { return String(n).padStart(2, '0'); }
 

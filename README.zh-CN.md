@@ -1,120 +1,48 @@
 # AI Curator for Obsidian
 
-**收藏一切，只读值得读的。**
+**尽管收藏，只读重要的。**
 
-[English](README.md) · [下载 1.0.0](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases/tag/1.0.0) · [反馈问题](https://github.com/MartinZhong2026/Obsidian-AI-Curator/issues)
+*Save anything. Read what matters.*
 
-把越积越多的文章、书签变成一个可用的阅读收件箱。AI Curator 自动整理指定文件夹中的 Markdown，判断 **精读 / 速览 / 备查 / 跳过**，生成包含要点、方法、局限与下一步行动的笔记。
+[English](README.md) · [Obsidian 社区插件](https://community.obsidian.md/plugins/ai-curator) · [版本下载](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases) · [更新记录](CHANGELOG.md)
 
-![英文界面和中文笔记的阅读收件箱](docs/images/inbox-dark.jpg)
+AI Curator 是一个免费的开源 Obsidian 插件，适合收藏很多、来不及逐篇阅读的人。选定存放网页剪藏、X 帖子和研究资料的 Markdown 文件夹后，插件会推荐哪些内容值得精读、速览、备查或跳过，并把有用的知识整理成带链接的 Markdown 笔记。
 
-*截图来自早期 beta 演示。1.0.0 已同时提供简体中文界面。*
+1. **安装。** 在 Obsidian 1.11.4 或更高版本中，打开 **设置 → 第三方插件 → 浏览**，搜索 **AI Curator**，安装并启用。
+2. **设置。** 选择来源文件夹，连接并测试模型，先处理最近 10 篇或仅处理新增收藏。默认使用 DeepSeek，需要自己的 API Key。
+3. **开始阅读。** 点击左侧 ✦ 图标，或在命令面板打开阅读收件箱。从 **值得关注** 开始读，之后可在 **工具箱** 查找可复用的素材。
 
-- **先决定读什么。** 每篇都有阅读判断、理由与本地计算的分数。
-- **留下可用的知识。** 一句话摘要、核心观点、实践步骤和行动清单，中英文输出均可。
-- **一个收件箱管理阅读。** 搜索、主题筛选、已读/归档、Bases 阅读列表与每周摘要。
-- **自动建立关联。** 按主题、标签和工具在本地连接笔记，不额外调用 AI。
-- **兼容现有流程。** Web Clipper、X 书签同步、Readwise 等，只要保存 Markdown 就能用，无需 Python 或后台服务。
-- **保护你的原文。** 原始笔记不改动；整理笔记分隔线下的个人内容会在重新生成时保留。
+![Obsidian 中的 AI Curator 阅读收件箱，展示一篇值得精读的教程和一个值得复用的 Prompt](docs/images/inbox-1.1.0.jpg)
 
-## 安装
+*Obsidian 中的 AI Curator 1.1.0 真实界面，使用虚构样例。* [工具箱截图](docs/images/toolbox-1.1.0.jpg) · [待补全原文截图](docs/images/needs-full-text-1.1.0.jpg)
 
-需要 **Obsidian 1.11.4+**。目前通过 GitHub 和 BRAT 分发，**尚未进入 Obsidian 社区插件目录**。
+## 从收藏夹到阅读清单
 
-1. 从[发布页](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases/tag/1.0.0)下载 `ai-curator-1.0.0.zip`。
-2. 解压到 `<仓库>/.obsidian/plugins/`，最终结构应为：
-   ```text
-   .obsidian/plugins/ai-curator/
-   ├── main.js
-   ├── manifest.json
-   └── styles.css
-   ```
-3. 重新加载 Obsidian，在「设置 → 第三方插件」中启用 **AI Curator**。
+- **知道为什么值得读。** 查看阅读收获、推荐理由及可用的原文证据。评分会考虑内容形态，技术教程和研究文章可以凭各自的价值入选。
+- **留下可复用的内容。** 整理笔记包含关键观点、方法、注意事项和后续行动。工具箱汇集带出处的 Prompt、代码、命令、表格、工具与资源。可直接复制的原文片段会与可用正文核对。
+- **谨慎处理不完整收藏。** 补全后仍只有导语的内容会放入 **待补全原文**，结论标为暂定。插件可以尝试获取原始网页。通过 FxTwitter 补全 X 帖子和通过 GitHub API 补充仓库资料均需分别开启。
+- **保护原始笔记。** 整理结果写入单独的文件夹，原始笔记不会被改写。重新整理会保留阅读状态和分隔标记下的个人笔记。
 
-发布页也提供单独的插件三件套和 `SHA256SUMS.txt` 校验文件。尝试新插件前，保留日常仓库备份。
+[中文整理示例](docs/examples/zh/)展示旧版在虚构收藏上的真实模型输出。[演示仓库](demo/vault/)包含可在本地整理的公开样例。
 
-**BRAT 方式：** 从社区插件安装 BRAT，运行 **Add a beta plugin for testing**，输入 `MartinZhong2026/Obsidian-AI-Curator`，然后启用 AI Curator。该命令虽然叫 beta，也可安装本项目的稳定版本。
+## 升级和备选安装方式
 
-## 两分钟开始
+- **社区插件升级。** 打开 **设置 → 第三方插件**，检查更新并在 AI Curator 旁点击 **更新**。1.1.0 会重新检查可能被旧版去重隐藏的收藏。批准付费重新整理前，可先查看费用估算。
+- **GitHub ZIP。** 从 [Release 页面](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases/latest) 下载 `ai-curator-*.zip`。将其中的 `ai-curator` 文件夹解压到 `<仓库>/.obsidian/plugins/`，重启 Obsidian 后启用。手动升级时，只替换已有文件夹内的 `main.js`、`manifest.json` 和 `styles.css`，以保留设置与索引。
+- **BRAT。** 在 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 运行 **Add a beta plugin for testing**，输入 `MartinZhong2026/Obsidian-AI-Curator`，然后启用 AI Curator。
 
-1. **选择来源文件夹**，例如 `Clippings` 或 X 书签目录。已有收藏等待你批准。
-2. **连接 AI 服务**，默认 DeepSeek，粘贴自己的密钥并「测试」，也可选其他服务或本地模型。
-3. **设置语言与兴趣**，界面默认跟随 Obsidian，也可在设置中选择 English 或简体中文；笔记输出语言独立设置。个人简介可选，用于改善相关性判断。
-4. **检查网络选项**，网页正文补全默认开启，会访问原始网站；X 补全通过第三方 FxTwitter，默认关闭，需主动开启。
-5. **决定旧收藏如何处理**：最新 10 篇、全部，或只处理之后的新收藏。
+## 模型、费用与隐私
 
-点击侧边栏 ✦ 打开收件箱。Obsidian 开启时，新收藏等待写入稳定后自动整理，通常一分钟内完成。关闭自动整理后仍可「立即处理队列」。
+支持 DeepSeek、Anthropic Claude、OpenAI、Gemini、OpenRouter、Ollama、LM Studio，以及兼容 OpenAI 的接口。界面与整理笔记可分别选择英文或简体中文。远程模型接口要求 HTTPS，只有本机回环地址允许 HTTP。
 
-## 会生成什么
+插件免费，托管模型可能按请求收费。默认每月预算估算为 3 美元，每日限 100 篇。没有内置价格的模型可以手动填写单价，实际费用以服务商账单为准。
 
-阅读判断及理由、一句话摘要、完整摘要、观点、实践方法、局限、行动、提到的工具及相关笔记，并链接回保存的原文。查看[中文示例](docs/examples/zh/)和[英文示例](docs/examples/en/)；这些是对演示素材的真实模型输出，不同运行可能得出不同判断。
+配置的模型会接收 Markdown、标题、来源元数据、主题与标签名称以及可选的阅读偏好。网页正文补全默认开启，遇到仅有导语的收藏时会请求其中的链接。密钥保存在 Obsidian SecretStorage。插件无需账号，无遥测。离线使用时，选择本地模型并关闭网页正文补全、X 补全和 GitHub 仓库补充。[完整隐私与联网说明](docs/PRIVACY.md)
 
-评分权重为相关性 30%、深度 20%、可操作性 20%、证据 15%、原创性 15%。不按点赞数或粉丝数评分。不完整内容会标明，最高 55 分。AI 判断可能出错，重要内容请结合原文核实。
+队列需要 Obsidian 保持开启。插件处理 Markdown，无法分析 PDF、图片和视频里的内容。付费墙与登录要求可能妨碍正文恢复，AI 判断与摘要也可能出错。需要确保准确时，请对照原文。
 
-```text
-AI Curator/
-├── Notes/             整理笔记：判断、评分、主题、标签、阅读状态
-├── Digests/           按需生成的阅读摘要
-└── Reading list.base  待读、未读、全部和备查视图
-```
+## 反馈与贡献
 
-## 模型与费用
+如果没有开始处理，请检查 **队列**、模型连接和预算限制。也可以运行 **整理当前笔记**，单独试用未纳入监控的文件。
 
-| 服务 | 配置 |
-|---|---|
-| DeepSeek | 默认服务，使用自己的 API 密钥 |
-| Anthropic Claude | 官方 SDK，使用密钥与可用模型 |
-| OpenAI、Gemini、OpenRouter | 密钥与模型名，可「加载模型」 |
-| Ollama、LM Studio | 启动本地模型服务 |
-| 自定义 | 兼容 OpenAI `/chat/completions` 的接口 |
-
-远程接口必须 **HTTPS**。仅 `localhost`、`127.0.0.1`、`[::1]` 允许 HTTP，本地服务预设也遵守此规则。手机的 localhost 指手机本身，连接电脑模型需可访问的 HTTPS 地址。
-
-默认 **3 美元估算月度预算、每日 100 篇**。并行调用会预留完整输出额度，重复收藏共享分析。费用随 token 和服务商价格变化；未内置价格的模型请填写输入/输出价格。
-
-**插件预算不是硬性扣费保证。** 未知价格、收费的失败请求、分词差异与调价可能影响账单。严格控费时也请设置服务商侧消费限制。连接测试不计入整理次数。
-
-完全离线使用需选择本地模型，并**同时关闭网页正文补全和 X 补全**。
-
-## 隐私与控制
-
-- 仅分析所选文件夹和手动指定的笔记，始终排除输出目录。
-- 所选 AI 服务会收到正文及元数据、可选简介、已有主题和标签名，也可能收到补全的网页正文。
-- 密钥存于 Obsidian SecretStorage；设置仅存名称，服务商错误会脱敏当前配置的密钥。
-- 队列与分析结果保存在插件目录，并保留恢复副本；原文不改动。
-- 无遥测、无统计分析、无需 AI Curator 账户。首次结果后的可选 Star 邀请只在点击时打开 GitHub。
-- 收藏正文是不可信数据，模型输出会校验，插件不执行其中的指令。
-
-完整网络清单见 [PRIVACY.md](docs/PRIVACY.md)。
-
-## 常用命令
-
-**打开阅读收件箱** · **立即处理队列** · **暂停或恢复自动整理** · **整理当前笔记** · **生成每周阅读摘要** · **刷新关联链接** · **重试失败项目** · **打开设置向导**
-
-摘要和关联链接刷新不调用 AI；可整理来源目录以外的一篇笔记。切换界面语言后重新加载插件，可更新命令名称。
-
-## 排错与限制
-
-- **没有变化：** 查看队列、密钥/模型、暂停状态和限额，新文件需等待几秒。
-- **401/402/403：** 修复密钥、余额或访问权限后恢复；临时错误会退避重试。
-- **无正文：** 纯图片会跳过。片段内容可开启补全后重新整理。
-- **原文更新：** 从卡片菜单重新整理；同步工具补齐片段正文时可自动重新分析。
-- **写入失败：** 检查空间与权限。已分析的项目可「刷新整理笔记」重试写入，无需再次调用 AI。
-- 仅在 Obsidian 开启时处理，不分析图片、PDF 和视频。
-- 关联基于本地规则，目前没有跨文章 AI 综合。
-- 面向桌面和移动 API 开发，但 1.0.0 本轮未能完成桌面主题及 iOS/Android 真机检查，建议先在测试仓库试用。
-
-## 参与贡献
-
-欢迎中文和英文的反馈与贡献。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [AGENTS.md](AGENTS.md)。
-
-```bash
-npm ci
-npm test             # 单元、引擎、持久化与双语测试，需要 Node 24+
-npm run build        # 类型检查与浏览器兼容构建
-npm run package      # 构建、测试、ZIP 与 SHA-256 验证
-npm audit
-npm run demo:install # 安装到演示仓库
-```
-
-可选的真实 API 演示见 [RELEASING.md](docs/RELEASING.md)，会使用自己的密钥并产生费用。[更新记录](docs/CHANGELOG.md) · [MIT 许可](LICENSE)。
+[反馈问题或建议](https://github.com/MartinZhong2026/Obsidian-AI-Curator/issues/new/choose) · [参与贡献](CONTRIBUTING.md) · [MIT 许可证](LICENSE)

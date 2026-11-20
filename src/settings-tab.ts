@@ -198,12 +198,16 @@ export class CuratorSettingTab extends PluginSettingTab {
       });
     new Setting(el)
       .setName(translate("Fetch full text for teasers"))
-      .setDesc(translate("If a saved note is only a snippet, download the original page from the link already in the note."))
+      .setDesc(translate("If a saved note is only a snippet, download the original page from the link already in the note. GitHub repositories linked in a note are looked up through the GitHub API (stars, license, last update, README)."))
       .addToggle((t) => t.setValue(this.s.fetchFullText).onChange(async (v) => { this.s.fetchFullText = v; await this.save(); }));
     new Setting(el)
       .setName(translate("Expand X (Twitter) posts"))
       .setDesc(translate("For cut-off X posts and X Articles, read the public post through the FxTwitter API (a third-party service that receives the post ID)."))
       .addToggle((t) => t.setValue(this.s.expandX).onChange(async (v) => { this.s.expandX = v; await this.save(); }));
+    new Setting(el)
+      .setName(translate("Enrich GitHub repository links"))
+      .setDesc(translate("Send repository links from saved notes to the GitHub API to retrieve repository facts and README excerpts."))
+      .addToggle((t) => t.setValue(this.s.enrichGitHub).onChange(async (v) => { this.s.enrichGitHub = v; await this.save(); }));
   }
 
   private budget(el: HTMLElement) {

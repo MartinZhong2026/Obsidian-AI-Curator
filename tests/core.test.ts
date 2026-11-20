@@ -15,21 +15,37 @@ test('normalizeAnalysis clamps scores, normalizes tags and computes a weighted s
   const a = parseAnalysis(analysisJson({ scores: { relevance: 9, depth: 0, evidence: '3', actionability: 5, originality: 2.6 } }));
   assert.deepEqual(a.scores, { relevance: 5, depth: 1, evidence: 3, actionability: 5, originality: 3 });
   assert.deepEqual(a.tags, ['rag', 'evals', 'llm-ops']);
-  assert.equal(a.score, computeScore(a.scores, 'full'));
+  assert.equal(a.score, computeScore(a.scores, a.form));
   assert.equal(a.mentions[0].url, 'https://github.com/explodinggradients/ragas');
 });
 
 test('verdicts stay consistent with scores', () => {
   const low = normalizeAnalysis(JSON.parse(analysisJson({ verdict: 'read', scores: { relevance: 1, depth: 1, evidence: 1, actionability: 1, originality: 1 } })));
-  assert.equal(low.verdict, 'skim');
+  // A "read" with nothing behind it is not kept as a recommendation; below 2/5 on average it becomes a skip with a reason.
+  assert.equal(low.verdict, 'skip');
+  assert.equal(low.skip_reason, 'no-substance');
   const high = normalizeAnalysis(JSON.parse(analysisJson({ verdict: 'skip', scores: { relevance: 5, depth: 5, evidence: 5, actionability: 5, originality: 5 } })));
   assert.equal(high.verdict, 'skim');
 });
 
-test('teasers are capped so they never top the reading list', () => {
+test('teasers are provisional: never "read", never skipped for missing text', () => {
   const s = { relevance: 5, depth: 5, evidence: 5, actionability: 5, originality: 5 };
-  assert.equal(computeScore(s, 'full'), 100);
-  assert.equal(computeScore(s, 'teaser'), 55);
+  assert.equal(computeScore(s, 'tutorial'), 100);
+  const read = normalizeAnalysis(JSON.parse(analysisJson({ verdict: 'read', completeness: 'teaser', missing: 'Only the intro was saved.' })));
+  assert.notEqual(read.verdict, 'read');
+  assert.equal(read.confidence, 'low');
+  assert.equal(read.missing, 'Only the intro was saved.');
+  const skip = normalizeAnalysis(JSON.parse(analysisJson({ verdict: 'skip', skip_reason: 'no-substance', completeness: 'teaser', scores: { relevance: 2, depth: 1, evidence: 1, actionability: 1, originality: 1 } })));
+  assert.notEqual(skip.verdict, 'skip');
+  const hype = normalizeAnalysis(JSON.parse(analysisJson({ verdict: 'skip', skip_reason: 'hype', completeness: 'teaser', scores: { relevance: 2, depth: 1, evidence: 1, actionability: 1, originality: 1 } })));
+  assert.equal(hype.verdict, 'skip');
+});
+
+test('scores are weighted by form: a copy-ready prompt is valued for usability, an argument for evidence', () => {
+  const s = { relevance: 4, depth: 2, evidence: 2, actionability: 5, originality: 2 };
+  assert.ok(computeScore(s, 'prompt') > computeScore(s, 'analysis'));
+  const t = { relevance: 4, depth: 3, evidence: 5, actionability: 1, originality: 3 };
+  assert.ok(computeScore(t, 'research') > computeScore(t, 'prompt'));
 });
 
 test('extractJson tolerates fences and chatter; rejects non-JSON', () => {
@@ -158,7 +174,7 @@ test('curated notes keep user notes and reading status across regeneration', () 
   const first = renderNote(input, null, 'unread');
   assert.ok(isCuratedNote(first));
   assert.match(first, /^source: "\[\[Clippings\/a\]\]"$/m);
-  assert.match(first, /> \[!tip\] Read · \d+\/100/);
+  assert.match(first, /> \[!tip\] Read in full · \d+\/100/);
   assert.match(first, /- \[ \] Build a 20-question set/);
   const edited = first.replace('status: unread', 'status: read') + 'My own thoughts here.\n';
   assert.equal(readStatus(edited), 'read');

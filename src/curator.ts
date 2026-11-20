@@ -1,12 +1,12 @@
 // The curation engine. Talks to Obsidian only through VaultPort so it can be tested in Node.
 import type { IndexData, Item, ReadingStatus } from './types.ts';
-import { type OutputLanguage, ANALYSIS_SCHEMA, parseAnalysis, systemPrompt, userMessage } from './analysis.ts';
+import { type OutputLanguage, ANALYSIS_SCHEMA, isLegacy, parseAnalysis, systemPrompt, upgradeAnalysis, userMessage } from './analysis.ts';
 import {
-  assess, canonicalUrl, cleanBody, estimateTokens, fallbackTitle, hashText, readMeta, stripFrontmatter, truncateForModel,
+  assess, canonicalUrl, cleanBody, estimateTokens, fallbackTitle, hashText, isGeneratedNote, isXUrl, readMeta, stripFrontmatter, truncateForModel,
   type Frontmatter,
 } from './extract.ts';
-import { recoverFullText, type HtmlParser } from './fulltext.ts';
-import { isCuratedNote, readStatus, relatedItems, renderBase, renderDigest, renderNote, safeFileName } from './notes.ts';
+import { enrichRepos, isXArticleTeaser, recoverFullText, type HtmlParser } from './fulltext.ts';
+import { MARKER, isCuratedNote, readStatus, relatedItems, renderBase, renderDigest, renderNote, renderToolbox, safeFileName } from './notes.ts';
 import { PRICES, ProviderError, chat, estimateCost, preset, type ChatResult, type Transport } from './providers.ts';
 import {
   MAX_ATTEMPTS, OUTPUT_TOKENS, backoffMs, budgetCheck, counts, emptyIndex, estimateItemCost, readyItems, recordUsage, rollUsage,
@@ -23,6 +23,8 @@ export interface VaultPort {
   write(path: string, content: string): Promise<void>;
   setFrontmatter(path: string, key: string, value: string): Promise<void>;
   parseYaml(text: string): unknown;
+  /** Move a file to the user's trash (recoverable). Optional: only used for user-confirmed cleanup. */
+  trash?(path: string): Promise<void>;
 }
 
 export type EngineState =
@@ -72,7 +74,17 @@ export class Curator {
     this.deps = deps;
     this.index = data && data.version === 1 ? { ...data, seededFolders: data.seededFolders ?? [] } : emptyIndex(this.now());
     // Recover from a crash or reload in the middle of an analysis.
-    for (const item of Object.values(this.index.items)) if (item.state === 'analyzing') item.state = 'pending';
+    for (const item of Object.values(this.index.items)) {
+      if (item.state === 'analyzing') item.state = 'pending';
+      // Analyses written by 1.0 are read through the 1.1 model (their verdicts and scores are kept).
+      if (item.analysis) item.analysis = upgradeAnalysis(item.analysis);
+    }
+    if ((this.index.libraryVersion ?? 1) < 2) {
+      // 1.0 analyzed notes written by programs (placeholders) and de-duplicated real saves against them.
+      // Re-read every finished item once, for free, to find and fix both.
+      for (const item of Object.values(this.index.items)) if (item.state === 'done' || item.state === 'skipped') item.needsCheck = true;
+      this.index.libraryVersion = 2;
+    }
   }
 
   private now() { return this.deps.now ? this.deps.now() : Date.now(); }
@@ -379,7 +391,12 @@ export class Curator {
       item.needsCheck = false;
       try {
         const raw = await this.deps.vault.read(item.path);
-        const clean = cleanBody(stripFrontmatter(raw));
+        const body = stripFrontmatter(raw);
+        if (isGeneratedNote(this.frontmatter(raw), body)) {
+          if (item.skipReason !== 'generated') this.markGenerated(item);
+          continue;
+        }
+        const clean = cleanBody(body);
         const hash = hashText(clean);
         if (hash === item.hash) continue;
         const chars = assess(clean, readMeta({}, clean), clean).chars;
@@ -395,6 +412,18 @@ export class Curator {
         // File vanished between events; the delete handler will clean up.
       }
     }
+  }
+
+  /** A program-written note: skip it and give back any real save that was hidden as its "duplicate". */
+  private markGenerated(item: Item) {
+    Object.assign(item, { state: 'skipped', skipReason: 'generated', analysis: undefined, error: undefined, stale: false, dedupeOf: undefined });
+    for (const other of this.items()) {
+      if (other.dedupeOf === item.path && other.state === 'skipped' && other.skipReason === 'duplicate') {
+        Object.assign(other, { state: 'pending', held: false, attempts: 0, skipReason: undefined, dedupeOf: undefined, force: true, nextAttemptAt: undefined });
+      }
+    }
+    this.deps.persist();
+    this.deps.changed();
   }
 
   private frontmatter(raw: string): Frontmatter {
@@ -447,6 +476,11 @@ export class Curator {
     const meta = readMeta(fm, body);
     const basename = item.path.split('/').pop()!.replace(/\.md$/i, '');
     const assessment = assess(clean, meta, body);
+    if (isGeneratedNote(fm, body) && !(item.manual && item.force)) {
+      item.title = meta.title || fallbackTitle(basename, clean);
+      this.markGenerated(item);
+      return;
+    }
     const force = !!item.force;
     Object.assign(item, {
       hash: hashText(clean), chars: assessment.chars, title: meta.title || fallbackTitle(basename, clean),
@@ -472,6 +506,8 @@ export class Curator {
     }
     let text = clean;
     item.fullTextFrom = undefined;
+    item.recoverable = undefined;
+    item.repos = undefined;
     if (assessment.thin && meta.links.length && (s.fetchFullText || s.expandX)) {
       const full = await recoverFullText(meta.links, {
         http: this.deps.transport.http, parseHtml: this.deps.parseHtml,
@@ -483,6 +519,15 @@ export class Curator {
         if (!meta.title && full.title) item.title = full.title.slice(0, 120);
       }
     }
+    if (assessment.thin && !item.fullTextFrom && !s.expandX && (isXArticleTeaser(body, meta.links) || (assessment.empty && meta.links.some(isXUrl)))) item.recoverable = 'x';
+    if (s.enrichGitHub && meta.links.length) {
+      // Repositories linked from the saved note itself: real facts and the README beat a post's description.
+      const repos = await enrichRepos(meta.links, this.deps.transport.http, 2, this.now());
+      if (repos.facts.length) {
+        text += '\n\n---\n' + repos.text;
+        item.repos = repos.facts;
+      }
+    }
     if (assessment.empty && !item.fullTextFrom) {
       Object.assign(item, { state: 'skipped', skipReason: 'empty', error: undefined });
       this.deps.persist();
@@ -490,13 +535,15 @@ export class Curator {
     }
 
     const { text: modelText, truncated } = truncateForModel(text, s.maxInputChars);
+    const teaser = assessment.thin && !item.fullTextFrom;
     const vocab = this.vocabulary();
     const lang = this.deps.language();
     const system = systemPrompt(lang, s.profile);
     const user = userMessage({
       lang,
       title: item.title, url: item.url, author: item.author, published: item.published,
-      text: modelText, truncated, fullTextFrom: item.fullTextFrom, topics: vocab.topics, tags: vocab.tags,
+      text: modelText, truncated, fullTextFrom: item.fullTextFrom, teaser,
+      today: new Date(this.now()).toISOString().slice(0, 10), topics: vocab.topics, tags: vocab.tags,
     });
 
     const price = this.price();
@@ -543,7 +590,7 @@ export class Curator {
     if (this.stopped || this.get(item.path) !== item) return;
 
     try {
-      item.analysis = parseAnalysis(result.text);
+      item.analysis = parseAnalysis(result.text, { source: modelText, teaser });
     } catch (error) {
       this.handleFailure(item, error instanceof Error ? error : new Error(String(error)), true);
       return;
@@ -662,5 +709,84 @@ export class Curator {
     const path = `${this.s.outputFolder}/Digests/${day}.md`;
     await this.deps.vault.write(path, renderDigest({ items: this.items(), from, to: to + 1, lang }));
     return path;
+  }
+
+  /** One note collecting every reusable asset (prompts, code, repositories, tools, resources). Free: no AI calls. */
+  async writeToolbox(): Promise<string> {
+    const path = `${this.s.outputFolder}/Toolbox.md`;
+    await this.deps.vault.write(path, renderToolbox({ items: this.items(), lang: this.deps.language(), now: this.now() }));
+    return path;
+  }
+
+  // ───────────────────────────── 1.0 → 1.1 ─────────────────────────────
+
+  /** Finished items whose analysis was written by 1.0 (no form-aware extraction yet). */
+  legacyItems(): Item[] {
+    return this.items().filter((i) => i.state === 'done' && isLegacy(i.analysis)).sort((a, b) => (b.analysis?.score ?? 0) - (a.analysis?.score ?? 0));
+  }
+
+  /** Conservative cost estimate for re-curating `items` with the current model. */
+  estimateCost(items: Item[]): number | null {
+    const price = this.price();
+    if (!price) return null;
+    let cost = 0;
+    for (const item of items) {
+      const size = this.deps.vault.stat(item.path)?.size ?? 2000;
+      // Teasers may grow when the full text is recovered: assume at least 4,000 input tokens for them.
+      const tokens = Math.max(Math.min(size / 3, this.s.maxInputChars / 2), item.analysis?.completeness === 'teaser' ? 4000 : 0);
+      cost += estimateItemCost(tokens, price) ?? 0;
+    }
+    return cost;
+  }
+
+  /** Re-curate items with the current analysis (user-approved; it costs one call per item). */
+  recurate(items: Item[]) {
+    for (const item of items) {
+      Object.assign(item, { state: 'pending', held: false, attempts: 0, error: undefined, nextAttemptAt: undefined, stale: false, skipReason: undefined, dedupeOf: undefined, force: true });
+    }
+    this.deps.persist();
+    this.deps.changed();
+    this.kick(true);
+  }
+
+  /** Saved X posts whose full text needs X expansion: curated teasers and empty article stubs. */
+  recoverableX(): Item[] {
+    return this.items().filter((i) => i.recoverable === 'x' && (i.state === 'done' || (i.state === 'skipped' && i.skipReason === 'empty')));
+  }
+
+  /** Items analyzed from a teaser: their verdict is provisional until the full text is available. */
+  needsSource(): Item[] {
+    return this.items().filter((i) => i.state === 'done' && i.analysis?.completeness === 'teaser');
+  }
+
+  /** Curated notes written for program-generated placeholders, safe to remove: nothing written below the marker. */
+  async generatedNoteLeftovers(): Promise<string[]> {
+    const out: string[] = [];
+    for (const item of this.items()) {
+      if (item.skipReason !== 'generated' || !item.notePath || !isInFolder(item.notePath, notesFolder(this.s.outputFolder)) || !this.deps.vault.stat(item.notePath)) continue;
+      try {
+        const text = await this.deps.vault.read(item.notePath);
+        const at = text.indexOf(MARKER);
+        const mine = at >= 0 ? text.slice(at + MARKER.length).replace(/^\s*##[^\n]*\n?/, '').trim() : 'unknown';
+        if (isCuratedNote(text) && !mine) out.push(item.notePath);
+      } catch { /* vanished */ }
+    }
+    return out;
+  }
+
+  /** Move the leftovers to the trash (recoverable). Returns how many were moved. */
+  async trashGeneratedLeftovers(): Promise<number> {
+    if (!this.deps.vault.trash) return 0;
+    let n = 0;
+    for (const path of await this.generatedNoteLeftovers()) {
+      try {
+        await this.deps.vault.trash(path);
+        for (const item of this.items()) if (item.notePath === path) item.notePath = undefined;
+        n++;
+      } catch { /* keep going */ }
+    }
+    this.deps.persist();
+    this.deps.changed();
+    return n;
   }
 }

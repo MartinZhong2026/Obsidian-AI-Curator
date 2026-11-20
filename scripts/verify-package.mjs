@@ -11,7 +11,7 @@ const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8'));
 const zipName = manifest.id + '-' + manifest.version + '.zip';
 const files = ['main.js', 'manifest.json', 'styles.css'];
 const packaged = (name) => readFileSync(join(root, 'dist', ...(name === zipName ? [] : [manifest.version]), name));
-const sums = readFileSync(join(root, 'dist', 'SHA256SUMS.txt'), 'utf8').trim().split('\n');
+const sums = readFileSync(join(root, 'dist', 'SHA256SUMS-' + manifest.version + '.txt'), 'utf8').trim().split('\n');
 assert.equal(sums.length, 4);
 for (const line of sums) {
   const [hash, name] = line.split('  ');

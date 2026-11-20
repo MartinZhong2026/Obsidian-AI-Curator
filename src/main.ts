@@ -263,6 +263,14 @@ export default class AICuratorPlugin extends Plugin {
       id: 'refresh-notes', name: translate("Refresh related links in curated notes (no AI calls)"),
       callback: async () => { const n = await this.curator.refreshNotes(); new Notice(translate("Refreshed {0} curated notes.", n)); },
     });
+    this.addCommand({
+      id: 'write-toolbox', name: translate("Open toolbox: prompts, code, repositories and resources (no AI calls)"),
+      callback: async () => {
+        const path = await this.curator.writeToolbox();
+        const f = this.app.vault.getAbstractFileByPath(path);
+        if (f instanceof TFile) await this.app.workspace.getLeaf('tab').openFile(f);
+      },
+    });
     this.addCommand({ id: 'retry-failed', name: translate("Retry failed items"), callback: () => this.curator.retryErrors() });
     this.addCommand({ id: 'setup', name: translate("Open setup guide"), callback: () => new SetupModal(this.app, this).open() });
   }

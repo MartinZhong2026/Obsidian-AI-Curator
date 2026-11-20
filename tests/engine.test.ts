@@ -145,6 +145,21 @@ test('unparseable model output is retried once, then reported', async () => {
   assert.equal(h.curator.usage().items, 2, 'paid calls are counted even when the reply is unusable');
 });
 
+test('incomplete decision JSON is retried once, then reported', async () => {
+  const h = harness(() => deepseekReply('{"tldr":"A summary, but no decision"}'), { settings: { settleSeconds: 0 } });
+  h.curator.scan();
+  h.vault.add('Clippings/a.md', ARTICLE('A', 'https://example.com/a'));
+  h.curator.onCreate(h.vault.stat('Clippings/a.md')!);
+  await h.idle();
+  h.clock.now += 60_000;
+  h.curator.kick();
+  await h.idle();
+  const item = h.curator.get('Clippings/a.md')!;
+  assert.equal(item.state, 'error');
+  assert.equal(h.transport.calls.length, 2);
+  assert.equal(h.curator.usage().items, 2, 'paid calls are counted even when the reply is unusable');
+});
+
 test('the monthly budget stops processing before the cap is passed', async () => {
   const h = harness(() => deepseekReply(analysisJson(), { prompt_tokens: 2_000_000, completion_tokens: 0 }), { settings: { settleSeconds: 0, monthlyBudget: 0.5 } });
   h.curator.scan();
@@ -311,7 +326,7 @@ test('a new month clears last month spending before reserving a call', async () 
 });
 
 test('parallel calls reserve the full output allowance before spending', async () => {
-  const h = harness(async () => { await new Promise((r) => setTimeout(r, 5)); return deepseekReply(analysisJson(), { prompt_tokens: 2000, completion_tokens: 4000 }); }, { settings: { settleSeconds: 0, monthlyBudget: 0.009 } });
+  const h = harness(async () => { await new Promise((r) => setTimeout(r, 5)); return deepseekReply(analysisJson(), { prompt_tokens: 2000, completion_tokens: 4000 }); }, { settings: { settleSeconds: 0, monthlyBudget: 0.015 } });
   for (const n of [1, 2]) h.vault.add('Clippings/' + n + '.md', ARTICLE('Item ' + n, 'https://example.com/' + n, ('Budget article ' + n + '. ').repeat(60)));
   h.curator.scan();
   h.curator.releaseBacklog();

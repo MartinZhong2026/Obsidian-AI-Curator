@@ -17,11 +17,12 @@ assignees: ""
 **Environment / 环境**
 - AI Curator:
 - Obsidian:
-- OS / 系统:
+- Device and OS / 设备与系统:
 - Interface and output language / 界面与输出语言:
 - Provider and model / 服务商与模型:
+- Relevant recovery settings / 相关正文补全设置:
 
 **Synthetic example or sanitized error / 虚构样例或脱敏错误**
 
-Never include API keys or private vault content.
-请勿附上密钥或私人笔记。
+Use a small synthetic Markdown example. Remove API keys, private links, and personal notes from logs and screenshots.
+请提供最小虚构 Markdown 样例，并移除日志和截图中的密钥、私人链接与个人笔记。

@@ -94,6 +94,12 @@ export class ObsidianVault implements VaultPort {
     await this.app.vault.create(p, content);
   }
 
+  /** Move to the trash the user configured in Obsidian (recoverable), never a hard delete. */
+  async trash(path: string): Promise<void> {
+    const f = this.app.vault.getAbstractFileByPath(normalizePath(path));
+    if (f instanceof TFile) await this.app.fileManager.trashFile(f);
+  }
+
   async setFrontmatter(path: string, key: string, value: string): Promise<void> {
     const f = this.app.vault.getAbstractFileByPath(normalizePath(path));
     if (!(f instanceof TFile)) return;

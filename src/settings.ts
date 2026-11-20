@@ -29,6 +29,7 @@ export interface CuratorSettings {
   fetchFullText: boolean;
   /** Read X/Twitter posts through the public FxTwitter API when a saved post is cut off. */
   expandX: boolean;
+  enrichGitHub: boolean;
   monthlyBudget: number;
   dailyLimit: number;
   /** Minimum seconds a new file must be unchanged before it is queued (clippers write in steps). */
@@ -57,6 +58,7 @@ export const DEFAULT_SETTINGS: CuratorSettings = {
   pauseReason: '',
   fetchFullText: true,
   expandX: false,
+  enrichGitHub: false,
   monthlyBudget: 3,
   dailyLimit: 100,
   settleSeconds: 8,

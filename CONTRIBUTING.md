@@ -1,23 +1,31 @@
 # Contributing / 参与贡献
 
-English and Chinese issues, translations and pull requests are equally welcome.
-欢迎中文与英文的问题反馈、翻译和代码贡献。
+English and Chinese contributions are welcome. Open an issue for a larger change so we can discuss the workflow first. Small documentation and translation fixes can go directly to a PR.
 
-Read [AGENTS.md](AGENTS.md) first for architecture, privacy boundaries and release rules.
-请先阅读该文件中的架构、隐私边界与发布规则。
+欢迎中英文贡献。较大的变更请先开 Issue 讨论使用场景，小的文档或翻译修正可直接提交 PR。
 
-Use Node 24+, run `npm ci` and `npm run dev`. Use `demo/vault` or a disposable test vault.
-Run `npm run package` and `npm audit` before proposing a release.
-使用 Node 24+，测试请用演示或可丢弃仓库，发布前完整打包并审计依赖。
+## Develop locally / 本地开发
 
-Add a regression test for behavior changes. Keep both READMEs and interface translations in sync.
-Real API tests are optional and paid; never send private vault content.
-行为变更需补回归测试，中英文文档与界面同步维护；真实 API 测试可选且收费，不得发送私人笔记。
+Use Node 24 or newer. Run the following from the repository root.
 
-Reports should include plugin/Obsidian versions, OS, interface/output language, provider/model,
-reproduction steps and a small synthetic Markdown sample.
-反馈请包括版本、系统、界面与输出语言、服务商/模型、复现步骤及虚构的最小样例。
+使用 Node 24 或更新版本，在仓库根目录运行以下命令。
 
-Remove keys, private URLs and personal notes from logs and screenshots.
-For security issues, use private vulnerability reporting if available; otherwise request a private contact channel without disclosing secrets.
-日志和截图请先脱敏。安全问题优先用私密漏洞报告，或以最少信息请求私下联系渠道。
+```bash
+npm ci
+npm run package
+npm run demo:install
+```
+
+Open `demo/vault` as a separate vault in Obsidian and enable AI Curator there. For iterative work, use `npm run dev` to rebuild on changes and copy the rebuilt files to the demo plugin folder before reloading.
+
+在 Obsidian 中将 `demo/vault` 作为单独的仓库打开，并在其中启用 AI Curator。反复修改时可运行 `npm run dev`，再把重新生成的文件复制到演示插件目录并重新加载。
+
+## Before opening a PR / 提交 PR 前
+
+- Read [AGENTS.md](AGENTS.md) for architecture and data boundaries. 阅读项目约定，了解架构和数据保护要求。
+- Add a focused regression test for behavior changes. Keep both READMEs and interface translations aligned. 行为变更请补充回归测试，并同步维护双语文档与界面。
+- Run `npm run package` and `npm audit`. In the PR, describe how you verified the change and include a demo-vault screenshot for UI changes where available. 在 PR 中说明验证方式，界面有变化时尽量附演示仓库截图。
+
+For bugs, include versions, platform, and a minimal synthetic reproduction. Remove API keys, private URLs, and personal notes from examples and logs. For security issues, use private vulnerability reporting if available, or request a private contact channel without disclosing the issue publicly.
+
+反馈问题时，请附版本、平台和最小虚构复现样例，从样例与日志中移除密钥、私人链接和笔记。安全问题请优先使用私密漏洞报告，或请求私下沟通渠道。

@@ -22,9 +22,10 @@ AI Curator runs entirely inside Obsidian. It has no server, no account, no analy
 | **Test** / **Load models** | Your AI provider | A one-word test prompt / a model-list request |
 | A saved note is only a teaser and **Fetch full text** is on | The URL already in that note | A normal page request |
 | A saved X post is cut off and **Expand X posts** is on (off by default) | `api.fxtwitter.com` (third party) | The post's ID and username |
+| A saved note has a repository link and **Enrich GitHub repository links** is on (off by default) | `api.github.com` | The repository owner and name for metadata and README requests |
 | You click **Star on GitHub** / **Report an issue** | Your browser opens github.com | Nothing from the plugin |
 
-Original sites and providers also receive ordinary request information, such as your IP address. For fully offline operation, use a local model and disable both web-recovery options. Remote AI endpoints require HTTPS; HTTP is allowed only on loopback.
+Original sites and providers also receive ordinary request information, such as your IP address. For fully offline operation, use a local model and disable web recovery, X expansion and GitHub repository enrichment. Remote AI endpoints require HTTPS; HTTP is allowed only on loopback.
 
 No other requests are made. Requests go through Obsidian's built-in `requestUrl`.
 
@@ -48,7 +49,7 @@ Disable the plugin and delete `.obsidian/plugins/ai-curator/` and the `AI Curato
 
 密钥通过 Obsidian SecretStorage 保存，设置仅存密钥名称，服务商错误在显示或保存前脱敏。无遥测、无分析统计、无项目账户。点击 GitHub 链接只会打开浏览器。
 
-完全离线使用需本地模型，并同时关闭网页正文补全与 X 补全。远程 AI 接口要求 HTTPS，仅回环地址允许 HTTP。
+GitHub 仓库补充默认关闭，开启后使用收藏中的仓库链接向 GitHub API 请求项目资料和 README。完全离线时使用本地模型，并关闭网页正文补全、X 补全和 GitHub 仓库补充。远程 AI 接口要求 HTTPS，仅回环地址允许 HTTP。
 
 收藏内容是不可信数据。提示词与结构校验可减少指令注入风险，但不能保证模型判断正确。插件不执行模型生成的操作。
 

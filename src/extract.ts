@@ -109,7 +109,8 @@ export function readMeta(fm: Frontmatter, body: string): SourceMeta {
   add(str(fm.article_url));
   for (const m of body.matchAll(/\[(?:View on X|Read full article)\]\((https?:\/\/[^)\s]+)\)/gi)) add(m[1]);
   for (const m of body.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) add(m[1]);
-  for (const m of body.matchAll(/(?:^|\s)(https?:\/\/[^\s)>\]]+)/g)) add(m[1]);
+  // Bare URLs, also right after CJK punctuation ("GitHub：https://…"); stop at CJK punctuation.
+  for (const m of body.matchAll(/(?:^|[^\w/:.=?&%-])(https?:\/\/[^\s)>\]，。、；！？“”‘’（）【】《》"'<]+)/g)) add(m[1].replace(/[.,;:!?]+$/, ''));
   return { url, author, published, title: str(fm.title), links: links.filter((l) => !/^https?:\/\/(?:pbs|video)\.twimg\.com/.test(l)) };
 }
 
@@ -159,6 +160,25 @@ export function assess(text: string, meta: SourceMeta, rawBody: string): Content
     empty: chars < 25,
     thin: chars < 280 || (teaserMarker && chars < 1500) || (meta.links.some((l) => /\/i\/article\//.test(l)) && chars < 1500),
   };
+}
+
+const GENERATED_FLAGS = ['ai-curator', 'curator_generated', 'curator-generated', 'generated_by_curator', 'ai_generated_placeholder'];
+const PLACEHOLDER_TEXT = /尚未完成\s*AI\s*分析|未生成摘要或评分|此文件由程序维护|AI analysis (?:is )?(?:not yet|pending)|This (?:file|note) is (?:maintained|generated) by (?:a program|the curator)/i;
+
+function truthy(value: unknown): boolean {
+  return value === true || value === 1 || (typeof value === 'string' && /^(true|yes|1)$/i.test(value.trim()));
+}
+
+/**
+ * Notes written by a program about another note (AI Curator's own notes, older curator versions'
+ * placeholders, index notes). They describe a source instead of being one, so analyzing them wastes
+ * money and, worse, makes them look like duplicates of the real saves.
+ */
+export function isGeneratedNote(fm: Frontmatter, body: string): boolean {
+  if (GENERATED_FLAGS.some((k) => truthy(fm[k]))) return true;
+  const text = body.slice(0, 3000);
+  if (PLACEHOLDER_TEXT.test(text) && (fm.source_path !== undefined || fm.ai_processed !== undefined || fm.queue_state !== undefined || meaningfulLength(cleanBody(text)) < 400)) return true;
+  return false;
 }
 
 /** Pick a short human title for notes that have none (tweets). */

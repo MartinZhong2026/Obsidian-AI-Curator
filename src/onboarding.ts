@@ -228,6 +228,10 @@ export class SetupModal extends Modal {
       .setName(translate("Expand cut-off X posts"))
       .setDesc(translate("Reads long X posts and X Articles through the public FxTwitter API, which receives the post ID."))
       .addToggle((t) => t.setValue(this.s.expandX).onChange(async (v) => { this.s.expandX = v; await this.plugin.saveSettings(); }));
+    new Setting(el)
+      .setName(translate("Enrich GitHub repository links"))
+      .setDesc(translate("Send repository links from saved notes to the GitHub API to retrieve repository facts and README excerpts."))
+      .addToggle((t) => t.setValue(this.s.enrichGitHub).onChange(async (v) => { this.s.enrichGitHub = v; await this.plugin.saveSettings(); }));
   }
 
   private renderBacklog(el: HTMLElement) {

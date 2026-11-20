@@ -2,119 +2,45 @@
 
 **Save anything. Read what matters.**
 
-[简体中文](README.zh-CN.md) · [Download 1.0.0](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases/tag/1.0.0) · [Feedback](https://github.com/MartinZhong2026/Obsidian-AI-Curator/issues)
+[简体中文](README.zh-CN.md) · [Install in Obsidian](https://community.obsidian.md/plugins/ai-curator) · [Releases](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases) · [Changelog](CHANGELOG.md)
 
-Turn saved articles and bookmarks into a reading inbox you can actually use. AI Curator reads Markdown in folders you choose, recommends **Read / Skim / Reference / Skip**, and writes concise notes with ideas, caveats and next actions.
+AI Curator is a free, open-source Obsidian plugin for people who save more than they can read. Point it at the folders where you save articles, X posts, and research as Markdown. It recommends what to read in full, skim, keep for reference, or skip, then saves the useful ideas in linked Markdown notes.
 
-![Reading inbox with English controls and Chinese notes](docs/images/inbox-dark.jpg)
+1. **Install.** In Obsidian 1.11.4+, open **Settings → Community plugins → Browse**, search **AI Curator**, then select **Install** and **Enable**.
+2. **Set up.** Choose your source folders, connect and test your model, and start with the newest 10 saves or with new saves only. DeepSeek is the default and uses your own API key.
+3. **Read.** Open the ✦ ribbon or run **AI Curator: Open reading inbox**. Start in **Worth your attention** and use **Toolbox** to find reusable material later.
 
-*Demo screenshot from the earlier beta. Version 1.0.0 also includes a Simplified Chinese interface.*
+![AI Curator reading inbox in Obsidian, showing a tutorial worth reading and a prompt worth keeping](docs/images/inbox-1.1.0.jpg)
 
-- **Decide what deserves your time.** A verdict, reason and locally computed score.
-- **Keep useful knowledge.** TL;DR, key ideas, practical steps and action checkboxes in English or Chinese.
-- **Read in one place.** Search, topic filters, read/archive controls, a Bases list and weekly digests.
-- **Connect notes locally.** Related links use shared topics, tags and tools without another AI call.
-- **Keep your workflow.** Web Clipper, X bookmark tools and other Markdown exporters; no Python or background service.
-- **Keep your originals.** Sources are never changed. Your writing below the marker in curated notes survives regeneration.
+*AI Curator 1.1.0 in Obsidian with synthetic demo data.* [Toolbox screenshot](docs/images/toolbox-1.1.0.jpg) · [Needs full text screenshot](docs/images/needs-full-text-1.1.0.jpg)
 
-## Install
+## From backlog to reading list
 
-Requires **Obsidian 1.11.4+**. Distributed through GitHub and BRAT; **not yet listed in Obsidian's community directory**.
+- **Know why something is worth reading.** See the reading payoff, the rationale, and supporting excerpts when available. Recommendations weigh material by its form, so a practical tutorial and a research article can earn their place for different reasons.
+- **Keep the useful parts.** Curated notes capture key ideas, methods, caveats, and next steps. Toolbox brings together source-linked prompts, snippets, commands, tables, tools, and resources. Copy-ready excerpts are checked against the available text.
+- **Flag incomplete saves.** When recovery still leaves a teaser, **Needs full text** keeps the verdict provisional. The plugin can try the original webpage. X expansion via FxTwitter and GitHub repository enrichment are separate opt-ins.
+- **Keep your notes.** The plugin writes to a separate output folder. It preserves your originals, reading status, and personal notes below the marker when regenerating curated notes.
 
-1. Download `ai-curator-1.0.0.zip` from the [release](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases/tag/1.0.0).
-2. Extract into `<vault>/.obsidian/plugins/`. You should get:
-   ```text
-   .obsidian/plugins/ai-curator/
-   ├── main.js
-   ├── manifest.json
-   └── styles.css
-   ```
-3. Reload Obsidian and enable **AI Curator** in *Settings → Community plugins*.
+[Sample curated notes](docs/examples/en/) show real model output on synthetic saves from the earlier release. The [demo vault](demo/vault/) contains public sample inputs you can curate locally.
 
-The release includes separate plugin files and `SHA256SUMS.txt`. Keep your usual vault backup.
+## Upgrade and alternative installs
 
-**BRAT alternative:** install BRAT from Obsidian's community plugins, run **Add a beta plugin for testing**, enter `MartinZhong2026/Obsidian-AI-Curator`, and enable AI Curator. That BRAT command can install this stable release too.
+- **Community plugins.** In **Settings → Community plugins**, check for updates and select **Update** for AI Curator. The 1.1.0 upgrade rechecks saves that older deduplication could hide. Review the estimate before approving any paid re-curation.
+- **GitHub ZIP.** Download the versioned `ai-curator-*.zip` from [Releases](https://github.com/MartinZhong2026/Obsidian-AI-Curator/releases/latest). Extract the included `ai-curator` folder into `<vault>/.obsidian/plugins/`, then reload Obsidian and enable the plugin. To upgrade manually, replace only `main.js`, `manifest.json`, and `styles.css` in the existing folder to keep its settings and index.
+- **BRAT.** In [BRAT](https://github.com/TfTHacker/obsidian42-brat), run **Add a beta plugin for testing**, enter `MartinZhong2026/Obsidian-AI-Curator`, and enable AI Curator.
 
-## First two minutes
+## Models, cost, and privacy
 
-1. **Choose source folders** such as `Clippings` or your X bookmark folder. Existing notes wait for approval.
-2. **Connect a provider.** DeepSeek is preselected; paste your own key and use **Test**, or choose another provider.
-3. **Choose languages and interests.** The interface follows Obsidian by default. **Interface language** offers English and 简体中文; the note output language is independent. Your optional profile helps assess relevance.
-4. **Review network options.** Full-text recovery is on by default and contacts the original website. X expansion uses third-party FxTwitter and is off until you enable it.
-5. **Choose the backlog:** newest 10, all existing saves, or new saves only.
+Use DeepSeek, Anthropic Claude, OpenAI, Gemini, OpenRouter, Ollama, LM Studio, or an OpenAI-compatible endpoint. The interface and output notes can use English or Simplified Chinese independently. Remote model endpoints require HTTPS. HTTP is accepted on loopback addresses.
 
-Open the ✦ ribbon icon for the inbox. New saves settle before processing, usually within a minute while Obsidian is open. Turning off automatic curation leaves **Process queue now** available.
+The plugin is free. Hosted model providers may charge for requests. The default monthly estimate is US$3, with a 100-item daily limit. Enter prices for models without built-in estimates and check actual charges with your provider.
 
-## Notes and verdicts
+The selected model receives the Markdown, title, source metadata, topic and tag names, and any optional reader profile. Webpage recovery is on by default and contacts saved links when a note is a teaser. API keys live in Obsidian SecretStorage. AI Curator has no telemetry or account. For offline use, choose a local model and turn off **Fetch full text**, **Expand X posts**, and **Enrich GitHub repository links**. [Privacy and network details](docs/PRIVACY.md)
 
-Notes include a verdict and reason, TL;DR, summary, key ideas, how-to steps, caveats, actions, mentioned tools and related notes, with a link back to the saved source. See [English examples](docs/examples/en/) and [Chinese examples](docs/examples/zh/): real model outputs on synthetic demo material. Results vary between runs.
+Obsidian must stay open to process the queue. PDF, image, and video contents are outside the Markdown workflow. Paywalls and login requirements can limit recovery, and AI verdicts and summaries can be wrong. Check the source for decisions that depend on accuracy.
 
-Scores use relevance (30%), depth (20%), actionability (20%), evidence (15%) and originality (15%). Popularity metrics do not affect scores. Incomplete saves are labeled and capped at 55/100. AI judgments can be wrong; check the original when accuracy matters.
+## Help and contribute
 
-```text
-AI Curator/
-├── Notes/             curated Markdown: verdict, score, topic, tags, status
-├── Digests/           reading digests, created on request
-└── Reading list.base  Read next, Unread, All curated and Reference views
-```
+For stalled items, check **Queue**, the model connection, and your limits. Use **Curate the current note** to try one file outside your watched folders.
 
-## Providers and spending
-
-| Provider | Setup |
-|---|---|
-| DeepSeek | Default; bring your API key |
-| Anthropic Claude | Official SDK; key and an available model |
-| OpenAI, Gemini, OpenRouter | Key and model name; use **Load models** |
-| Ollama, LM Studio | A running local server and model |
-| Custom | OpenAI-compatible `/chat/completions` endpoint |
-
-Remote endpoints require **HTTPS**. HTTP is allowed only on `localhost`, `127.0.0.1` and `[::1]`, even for local presets. On mobile, localhost means the phone; a desktop model needs a reachable HTTPS endpoint.
-
-Default limits: **US$3 estimated monthly budget**, **100 items/day**. Concurrent calls reserve the requested output allowance; duplicate saves share an analysis. Costs depend on tokens and provider prices. For models without a built-in price, enter input/output prices for meaningful budget tracking.
-
-**This is not a hard billing cap.** Unknown prices, billed failures, tokenization differences and provider price changes affect actual charges. Set a provider-side spending limit when needed. Connection tests are not included in the curation counter.
-
-Fully offline use requires a local model **and both full-text recovery and X expansion disabled**.
-
-## Privacy and control
-
-- Only chosen folders and notes you explicitly curate are analyzed. Output is excluded.
-- The selected AI provider receives note text and metadata, optional profile, and existing topic/tag names; text may include recovered web content.
-- Keys use Obsidian SecretStorage. Settings keep a secret identifier; provider errors redact the configured key.
-- Queue state and analysis results stay in plugin storage, with recovery copies. Originals are never changed.
-- No telemetry, analytics or AI Curator account. A one-time optional star invitation only opens GitHub when clicked.
-- Saved content is untrusted data. Model output is validated; its instructions are never executed.
-
-See the complete [privacy and network disclosure](docs/PRIVACY.md).
-
-## Commands
-
-**Open reading inbox** · **Process queue now** · **Pause or resume automatic curation** · **Curate the current note** · **Create weekly reading digest** · **Refresh related links in curated notes** · **Retry failed items** · **Open setup guide**
-
-Digests and related-link refreshes do not call AI. Single-note curation works outside watched folders. Reload after switching interface language to update command names.
-
-## Troubleshooting and limits
-
-- **Nothing happens:** inspect Queue, key/model, pause state and limits; new files wait a few seconds.
-- **401/402/403:** fix the key, balance or access, then resume. Temporary errors back off.
-- **No content:** image-only notes are skipped. Enable recovery for teasers and curate again.
-- **Changed source:** re-curate from the menu. A sync tool completing a teaser can trigger reanalysis.
-- **Write failure:** check disk space and permissions. **Refresh curated notes** retries writing analyzed items without another AI call.
-- Obsidian must remain open. Images, PDFs and videos are not analyzed.
-- Related links use local heuristics; no cross-article AI synthesis.
-- Desktop/mobile APIs are targeted. Fresh native desktop/theme and iOS/Android device checks were unavailable for 1.0.0; try a test vault first.
-
-## Contribute
-
-English and Chinese contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
-
-```bash
-npm ci
-npm test             # unit, engine, persistence and bilingual tests; Node 24+
-npm run build        # type check and browser-compatible production bundle
-npm run package      # build, tests, ZIP and SHA-256 verification
-npm audit
-npm run demo:install # install into the synthetic demo vault
-```
-
-The optional real API demo in [RELEASING.md](docs/RELEASING.md) uses your key and incurs charges. [Changelog](docs/CHANGELOG.md) · [MIT license](LICENSE).
+[Report a bug or suggest an improvement](https://github.com/MartinZhong2026/Obsidian-AI-Curator/issues/new/choose) · [Contributing](CONTRIBUTING.md) · [MIT license](LICENSE)

@@ -57,7 +57,7 @@ end.writeUInt32LE(central.length, 12); end.writeUInt32LE(offset, 16);
 const zipPath = join(root, 'dist', `${manifest.id}-${manifest.version}.zip`);
 writeFileSync(zipPath, Buffer.concat([...locals, central, end]));
 const assets = [...files.map((f) => [f, join(out, f)]), [manifest.id + '-' + manifest.version + '.zip', zipPath]];
-writeFileSync(join(root, 'dist', 'SHA256SUMS.txt'), assets.map(([name, path]) =>
+writeFileSync(join(root, 'dist', 'SHA256SUMS-' + manifest.version + '.txt'), assets.map(([name, path]) =>
   createHash('sha256').update(readFileSync(path)).digest('hex') + '  ' + name).join('\n') + '\n');
 
 for (const f of files) console.log(`${f.padEnd(14)} ${(statSync(join(out, f)).size / 1024).toFixed(1)} KB`);
